@@ -1,4 +1,5 @@
 import { getVertexAccessToken, buildVertexUrl } from './vertex-ai'
+import { TTS_CONFIG } from '@/prompts/tts-config'
 
 export interface TtsSpeaker {
   name: string
@@ -11,8 +12,8 @@ export interface SynthesisResult {
 }
 
 const DEFAULT_SPEAKERS: [TtsSpeaker, TtsSpeaker] = [
-  { name: 'Host',  voiceName: process.env.TTS_VOICE_HOST  ?? 'Kore' },
-  { name: 'Guide', voiceName: process.env.TTS_VOICE_GUIDE ?? 'Puck' },
+  { name: 'SPEAKER_1', voiceName: TTS_CONFIG.voice },
+  { name: 'SPEAKER_2', voiceName: TTS_CONFIG.voiceB },
 ]
 
 export async function synthesize(
@@ -43,10 +44,15 @@ async function synthesizeChunk(
   const model = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
   const url = buildVertexUrl(model)
 
+  const textWithStyle = TTS_CONFIG.stylePrompt
+    ? `${TTS_CONFIG.stylePrompt}\n\n${text}`
+    : text
+
   const body = {
-    contents: [{ parts: [{ text }] }],
+    contents: [{ role: 'user', parts: [{ text: textWithStyle }] }],
     generationConfig: {
       responseModalities: ['AUDIO'],
+      temperature: TTS_CONFIG.temperature,
       speechConfig: {
         multiSpeakerVoiceConfig: {
           speakerVoiceConfigs: speakers.map((s) => ({

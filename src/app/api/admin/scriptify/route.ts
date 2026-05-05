@@ -24,7 +24,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const { sourceText } = parsed.data
     const prompt = buildScriptifyPrompt({ sourceText })
-    const model = process.env.GEMINI_SCRIPTIFY_MODEL ?? 'gemini-2.0-flash'
+    const model = process.env.GEMINI_SCRIPTIFY_MODEL ?? 'gemini-2.5-flash'
 
     const accessToken = await getVertexAccessToken()
     const url = buildVertexUrl(model)
@@ -36,7 +36,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
       }),
     })
 
