@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { deleteContent } from '@/lib/stubs'
+import { deleteContentAction } from './actions'
 
 const SOURCE_TYPE_LABELS: Record<Content['sourceType'], string> = {
   polling: 'ポーリング',
@@ -75,13 +75,20 @@ export function ContentsPageClient({ contents }: ContentsPageClientProps) {
     return matchesSearch && matchesSource && matchesStatus
   })
 
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   const handleDelete = async (id: string) => {
-    await deleteContent(id)
-    // TODO: Refresh data
+    const result = await deleteContentAction(id)
+    if (result.error) setDeleteError(result.error)
   }
 
   return (
     <div className="flex flex-col gap-6">
+      {deleteError && (
+        <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {deleteError}
+        </div>
+      )}
       {/* ヘッダー部 */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <Button asChild>

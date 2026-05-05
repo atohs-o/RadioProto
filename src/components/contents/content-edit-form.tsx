@@ -5,11 +5,9 @@ import { useRouter } from 'next/navigation'
 import { SparklesIcon, Volume2Icon, Loader2Icon, SaveIcon } from 'lucide-react'
 import type { Content } from '@/lib/schemas/content'
 import {
-  createContent,
-  updateContent,
-  generateScript,
-  generateAudio,
-} from '@/lib/api/contents'
+  createContentAction,
+  updateContentAction,
+} from '@/app/(admin)/contents/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -80,28 +78,40 @@ export function ContentEditForm({ content }: ContentEditFormProps) {
     if (!sourceText.trim()) return
     setIsGeneratingScript(true)
     try {
-      const generatedScript = await generateScript(sourceText)
-      setScriptText(generatedScript)
+      const res = await fetch('/api/admin/scriptify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceText }),
+      })
+      const data = await res.json() as { scriptText?: string; error?: string }
+      if (!res.ok || !data.scriptText) throw new Error(data.error ?? '台本生成に失敗しました')
+      setScriptText(data.scriptText)
     } finally {
       setIsGeneratingScript(false)
     }
   }, [sourceText])
 
   const handleGenerateAudio = useCallback(async () => {
-    if (!scriptText.trim() || isScriptOverLimit) return
+    if (!scriptText.trim() || isScriptOverLimit || !content?.id) return
     setIsGeneratingAudio(true)
     setAudioStatus('generating')
     try {
-      const result = await generateAudio(scriptText)
-      setAudioUrl(result.audioUrl)
-      setAudioDurationSec(result.audioDurationSec)
+      const res = await fetch('/api/admin/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentId: content.id, scriptText }),
+      })
+      const data = await res.json() as { audioUrl?: string; durationSeconds?: number; error?: string }
+      if (!res.ok || !data.audioUrl) throw new Error(data.error ?? '音声生成に失敗しました')
+      setAudioUrl(data.audioUrl)
+      setAudioDurationSec(data.durationSeconds ?? 0)
       setAudioStatus('generated')
     } catch {
       setAudioStatus('error')
     } finally {
       setIsGeneratingAudio(false)
     }
-  }, [scriptText, isScriptOverLimit])
+  }, [scriptText, isScriptOverLimit, content])
 
   const handleSave = useCallback(async () => {
     if (!title.trim()) return
@@ -114,20 +124,16 @@ export function ContentEditForm({ content }: ContentEditFormProps) {
 
       const data = {
         title,
-        sourceType,
-        sourceText,
-        scriptText,
-        tags: tagArray,
-        audioStatus,
-        audioUrl: audioUrl || undefined,
-        audioDurationSec: audioDurationSec || undefined,
-        radioRegistered: content?.radioRegistered ?? false,
+        source_type: sourceType,
+        source_text: sourceText,
+        script_text: scriptText,
+        tags_csv: tagArray.join(', '),
       }
 
       if (isNew) {
-        await createContent(data)
+        await createContentAction(data)
       } else {
-        await updateContent(content.id, data)
+        await updateContentAction(content.id, data)
       }
       router.push('/contents')
     } finally {
@@ -291,7 +297,7 @@ export function ContentEditForm({ content }: ContentEditFormProps) {
                 variant="secondary"
                 onClick={handleGenerateAudio}
                 disabled={
-                  !scriptText.trim() || isScriptOverLimit || isGeneratingAudio
+                  !scriptText.trim() || isScriptOverLimit || isGeneratingAudio || !content?.id
                 }
               >
                 {isGeneratingAudio ? (

@@ -17,3 +17,22 @@ export const contentSchema = z.object({
 })
 
 export type Content = z.infer<typeof contentSchema>
+
+export const ContentMetadataSchema = z.object({
+  source_text: z.string().optional(),
+  audio_status: z.enum(['pending', 'generating', 'generated', 'error']).default('pending'),
+  radio_registered: z.boolean().default(false),
+  tags: z.array(z.string()).default([]),
+})
+
+export type ContentMetadata = z.infer<typeof ContentMetadataSchema>
+
+export const ContentFormSchema = z.object({
+  title: z.string().min(1, 'タイトルを入力してください').max(200),
+  source_type: z.enum(['polling', 'manual', 'url']),
+  source_text: z.string().optional(),
+  script_text: z.string().optional(),
+  tags_csv: z.string().optional(),
+})
+
+export type ContentForm = z.infer<typeof ContentFormSchema>

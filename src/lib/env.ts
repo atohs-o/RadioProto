@@ -12,11 +12,17 @@ export const publicEnv = publicSchema.parse({
 
 const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1),
+  GCP_PROJECT_ID: z.string().min(1),
+  GCP_LOCATION: z.string().default('us-central1'),
 })
 
 // サーバー専用（Server Component / API Route / Edge Function からのみ呼ぶ）
 export function getServerEnv() {
   return serverSchema.parse({
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    GOOGLE_SERVICE_ACCOUNT_JSON: process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+    GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+    GCP_LOCATION: process.env.GCP_LOCATION,
   })
 }

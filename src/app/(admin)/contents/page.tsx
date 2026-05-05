@@ -1,4 +1,4 @@
-import { getContents } from '@/lib/stubs'
+import { getContents } from '@/lib/api/contents'
 import { ContentsPageClient } from './contents-page-client'
 
 export default async function ContentsPage() {
