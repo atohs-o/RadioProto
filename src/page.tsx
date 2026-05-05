@@ -17,12 +17,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { LoadingState } from '@/components/common'
-import { getProgram } from '@/lib/stubs'
+import { getProgramById as getProgram } from '@/lib/stubs'
 import type { Program } from '@/lib/types'
 
 // Leaflet は SSR 無効化
 const PlayMap = dynamic(
-  () => import('@/components/map/play-map').then((mod) => mod.PlayMap),
+  () => import('@/components/client/play-map'),
   { ssr: false, loading: () => <div className="flex h-full items-center justify-center bg-muted">地図を読み込み中...</div> }
 )
 

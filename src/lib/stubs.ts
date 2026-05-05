@@ -1,4 +1,5 @@
 import type { Content, Program, PollingSite } from './types'
+import type { Bus, Trip, PlayEvent, UserProfile } from '@/types'
 
 // ============================================
 // モックデータ
@@ -201,4 +202,191 @@ export async function deletePollingSite(id: string): Promise<void> {
 export async function getEnabledPrograms(): Promise<Program[]> {
   // TODO: API接続はClaude Codeが実装
   return MOCK_PROGRAMS.filter(p => p.enabled)
+}
+
+// getProgram エイリアス（getProgramById の別名）
+export const getProgram = getProgramById
+
+// コンテンツ更新
+export async function updateContent(id: string, data: Partial<Content>): Promise<Content> {
+  // TODO: API接続はClaude Codeが実装
+  const existing = MOCK_CONTENTS.find(c => c.id === id)
+  return { ...(existing ?? MOCK_CONTENTS[0]), ...data, id }
+}
+
+// 番組有効/無効切替
+export async function updateProgramEnabled(id: string, enabled: boolean): Promise<void> {
+  // TODO: API接続はClaude Codeが実装
+  console.log('Update program enabled:', id, enabled)
+}
+
+// ============================================
+// バス関連
+// ============================================
+
+const MOCK_BUSES: Bus[] = [
+  {
+    id: 'bus-001',
+    busCode: 'BUS-001',
+    busName: '安曇野北ルート1号車',
+    deviceToken: 'tok_abc123def456',
+    lastConnectedAt: '2026-05-06T08:30:00Z',
+    enabled: true,
+  },
+  {
+    id: 'bus-002',
+    busCode: 'BUS-002',
+    busName: '安曇野南ルート1号車',
+    deviceToken: 'tok_xyz789ghi012',
+    lastConnectedAt: '2026-05-05T17:00:00Z',
+    enabled: true,
+  },
+  {
+    id: 'bus-003',
+    busCode: 'BUS-003',
+    busName: '穂高シャトル',
+    deviceToken: 'tok_pqr345stu678',
+    enabled: false,
+  },
+]
+
+export async function getBuses(): Promise<Bus[]> {
+  // TODO: API接続はClaude Codeが実装
+  return MOCK_BUSES
+}
+
+export async function createBus({ busCode, busName }: { busCode: string; busName: string }): Promise<Bus> {
+  // TODO: API接続はClaude Codeが実装
+  const newBus: Bus = {
+    id: `bus-${Date.now()}`,
+    busCode,
+    busName,
+    deviceToken: `tok_${Math.random().toString(36).slice(2, 14)}`,
+    enabled: true,
+  }
+  return newBus
+}
+
+export async function disableBus(id: string): Promise<void> {
+  // TODO: API接続はClaude Codeが実装
+  console.log('Disable bus:', id)
+}
+
+// ============================================
+// 再生ログ関連
+// ============================================
+
+const MOCK_TRIPS: Trip[] = [
+  {
+    id: 'trip-001',
+    busCode: 'BUS-001',
+    startedAt: '2026-05-06T08:00:00Z',
+    endedAt: '2026-05-06T10:30:00Z',
+    playCount: 5,
+  },
+  {
+    id: 'trip-002',
+    busCode: 'BUS-002',
+    startedAt: '2026-05-06T09:00:00Z',
+    endedAt: '2026-05-06T11:00:00Z',
+    playCount: 3,
+  },
+  {
+    id: 'trip-003',
+    busCode: 'BUS-001',
+    startedAt: '2026-05-05T13:00:00Z',
+    endedAt: '2026-05-05T15:30:00Z',
+    playCount: 4,
+  },
+]
+
+const MOCK_PLAY_EVENTS: Record<string, PlayEvent[]> = {
+  'trip-001': [
+    { id: 'ev-001', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'completed', playedAt: '2026-05-06T08:15:00Z' },
+    { id: 'ev-002', contentTitle: '穂高神社 例大祭のお知らせ', status: 'completed', playedAt: '2026-05-06T08:35:00Z' },
+    { id: 'ev-003', contentTitle: '道の駅 新商品情報', status: 'skipped', playedAt: '2026-05-06T09:00:00Z' },
+    { id: 'ev-004', contentTitle: '北アルプス紅葉情報', status: 'completed', playedAt: '2026-05-06T09:30:00Z' },
+    { id: 'ev-005', contentTitle: '安曇野市観光案内', status: 'error', playedAt: '2026-05-06T10:00:00Z' },
+  ],
+  'trip-002': [
+    { id: 'ev-006', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'completed', playedAt: '2026-05-06T09:15:00Z' },
+    { id: 'ev-007', contentTitle: '穂高神社 例大祭のお知らせ', status: 'completed', playedAt: '2026-05-06T09:45:00Z' },
+    { id: 'ev-008', contentTitle: '道の駅 新商品情報', status: 'completed', playedAt: '2026-05-06T10:15:00Z' },
+  ],
+  'trip-003': [
+    { id: 'ev-009', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'completed', playedAt: '2026-05-05T13:15:00Z' },
+    { id: 'ev-010', contentTitle: '北アルプス紅葉情報', status: 'completed', playedAt: '2026-05-05T13:45:00Z' },
+    { id: 'ev-011', contentTitle: '道の駅 新商品情報', status: 'skipped', playedAt: '2026-05-05T14:15:00Z' },
+    { id: 'ev-012', contentTitle: '安曇野市観光案内', status: 'completed', playedAt: '2026-05-05T14:45:00Z' },
+  ],
+}
+
+export async function getTrips({ date, busCode }: { date?: string; busCode?: string } = {}): Promise<Trip[]> {
+  // TODO: API接続はClaude Codeが実装
+  return MOCK_TRIPS.filter(t => {
+    if (date && !t.startedAt.startsWith(date)) return false
+    if (busCode && t.busCode !== busCode) return false
+    return true
+  })
+}
+
+export async function getPlayEventsByTripId(tripId: string): Promise<PlayEvent[]> {
+  // TODO: API接続はClaude Codeが実装
+  return MOCK_PLAY_EVENTS[tripId] ?? []
+}
+
+// ============================================
+// ユーザー・設定関連
+// ============================================
+
+export async function getUserProfile(): Promise<UserProfile> {
+  // TODO: API接続はClaude Codeが実装
+  return { displayName: '管理者', email: 'admin@example.com' }
+}
+
+export async function updateUserProfile({ displayName }: { displayName: string }): Promise<void> {
+  // TODO: API接続はClaude Codeが実装
+  console.log('Update user profile:', displayName)
+}
+
+export async function changePassword({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }): Promise<void> {
+  // TODO: API接続はClaude Codeが実装
+  console.log('Change password', currentPassword.length, newPassword.length)
+}
+
+export async function clearAudioCache(): Promise<void> {
+  // TODO: Phase 2で実装
+  throw new Error('未実装')
+}
+
+export async function exportPlayLogs(): Promise<void> {
+  // TODO: Phase 2で実装
+  throw new Error('未実装')
+}
+
+// ============================================
+// 認証関連
+// ============================================
+
+export async function login(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+  // TODO: Supabase Auth接続はClaude Codeが実装
+  await new Promise(resolve => setTimeout(resolve, 500))
+  if (email && password.length >= 8) {
+    return { success: true }
+  }
+  return { success: false, error: 'メールアドレスまたはパスワードが正しくありません' }
+}
+
+export async function requestPasswordReset(email: string): Promise<{ success: boolean }> {
+  // TODO: Supabase Auth接続はClaude Codeが実装
+  await new Promise(resolve => setTimeout(resolve, 500))
+  console.log('Request password reset for:', email)
+  return { success: true }
+}
+
+export async function resetPassword(token: string, password: string): Promise<{ success: boolean; error?: string }> {
+  // TODO: Supabase Auth接続はClaude Codeが実装
+  await new Promise(resolve => setTimeout(resolve, 500))
+  console.log('Reset password with token:', token, 'password length:', password.length)
+  return { success: true }
 }

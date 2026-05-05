@@ -1,4 +1,4 @@
-import { getPrograms } from '@/src/lib/stub-api'
+import { getPrograms } from '@/lib/stubs'
 import { ProgramsPageClient } from './programs-page-client'
 
 export default async function ProgramsPage() {

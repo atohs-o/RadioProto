@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Empty, EmptyIcon, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import {
   Select,
   SelectContent,
@@ -144,9 +144,9 @@ export default function LogsPage() {
               </div>
             ) : trips?.length === 0 ? (
               <Empty className="py-8">
-                <EmptyIcon>
+                <EmptyMedia>
                   <FileText className="size-8" />
-                </EmptyIcon>
+                </EmptyMedia>
                 <EmptyTitle>運行データがありません</EmptyTitle>
                 <EmptyDescription>
                   フィルター条件を変更してください
@@ -203,9 +203,9 @@ export default function LogsPage() {
           <CardContent className="p-0">
             {!selectedTripId ? (
               <Empty className="py-8">
-                <EmptyIcon>
+                <EmptyMedia>
                   <FileText className="size-8" />
-                </EmptyIcon>
+                </EmptyMedia>
                 <EmptyTitle>運行を選択してください</EmptyTitle>
                 <EmptyDescription>
                   左の一覧から運行を選択すると、再生イベントが表示されます
@@ -217,9 +217,9 @@ export default function LogsPage() {
               </div>
             ) : playEvents?.length === 0 ? (
               <Empty className="py-8">
-                <EmptyIcon>
+                <EmptyMedia>
                   <FileText className="size-8" />
-                </EmptyIcon>
+                </EmptyMedia>
                 <EmptyTitle>再生イベントがありません</EmptyTitle>
               </Empty>
             ) : (

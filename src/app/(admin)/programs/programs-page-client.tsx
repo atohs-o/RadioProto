@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { PlusIcon, PencilIcon, TrashIcon } from 'lucide-react'
-import type { Program } from '@/src/types/schema'
+import type { Program } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { updateProgramEnabled, deleteProgram } from '@/src/lib/stub-api'
+import { updateProgramEnabled, deleteProgram } from '@/lib/stubs'
 
 interface ProgramsPageClientProps {
   programs: Program[]

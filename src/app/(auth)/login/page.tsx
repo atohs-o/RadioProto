@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { login } from '@/lib/stub-api'
+import { login } from '@/lib/stubs'
 
 export default function LoginPage() {
   const searchParams = useSearchParams()

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { resetPassword } from '@/lib/stub-api'
+import { resetPassword } from '@/lib/stubs'
 
 export default function ResetPasswordConfirmPage() {
   const searchParams = useSearchParams()

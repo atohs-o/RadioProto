@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
-import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { getBuses, createBus, disableBus } from '@/lib/stubs'
 import type { Bus } from '@/types'
 

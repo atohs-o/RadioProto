@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon } from 'lucide-react'
-import type { Content } from '@/src/types/schema'
+import type { Content } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { deleteContent } from '@/src/lib/stub-api'
+import { deleteContent } from '@/lib/stubs'
 
 const SOURCE_TYPE_LABELS: Record<Content['sourceType'], string> = {
   polling: 'ポーリング',

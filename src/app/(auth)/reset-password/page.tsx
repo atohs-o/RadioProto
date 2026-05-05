@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { requestPasswordReset } from '@/lib/stub-api'
+import { requestPasswordReset } from '@/lib/stubs'
 
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState('')

@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { DynamicMap } from "@/src/components/MapWrapper"
 import dynamic from "next/dynamic"
-import { DynamicMap } from "@/src/components/MapWrapper"
 import { Navigation, Wifi, WifiOff, Radio, Volume2, Power } from "lucide-react"
 import { StatusIndicator } from "@/components/client/status-indicator"
 import { OfflineBanner } from "@/components/client/offline-banner"
@@ -20,24 +18,26 @@ const PlayMap = dynamic(
 )
 
 // スタブデータ
-const MOCK_ROUTE_POINTS: [number, number][] = [
-  [36.3006, 137.8729],
-  [36.3100, 137.8750],
-  [36.3234, 137.8821],
+const MOCK_ROUTE_POINTS = [
+  { lat: 36.3006, lng: 137.8729 },
+  { lat: 36.3100, lng: 137.8750 },
+  { lat: 36.3234, lng: 137.8821 },
 ]
 
-const MOCK_MARKERS = [
+const MOCK_ITEMS = [
   {
     id: "1",
-    position: [36.3006, 137.8729] as [number, number],
-    status: "played" as const,
-    label: "穂高駅前",
+    position: { lat: 36.3006, lng: 137.8729 },
+    locationName: "穂高駅前",
+    contentTitle: "安曇野わさび農場 秋の収穫祭",
+    audioDurationSec: 95,
   },
   {
     id: "2",
-    position: [36.3234, 137.8821] as [number, number],
-    status: "waiting" as const,
-    label: "大王わさび農場",
+    position: { lat: 36.3234, lng: 137.8821 },
+    locationName: "大王わさび農場",
+    contentTitle: "道の駅 ほりがねの里",
+    audioDurationSec: 60,
   },
 ]
 
@@ -62,6 +62,8 @@ function gpsStatusToIndicator(status: GpsStatus): "ok" | "warning" | "error" {
       return "warning"
     case "inactive":
       return "error"
+    default:
+      return "error"
   }
 }
 
@@ -73,6 +75,8 @@ function gpsStatusLabel(status: GpsStatus): string {
       return "精度低下"
     case "inactive":
       return "未受信"
+    default:
+      return "不明"
   }
 }
 
@@ -85,9 +89,7 @@ export default function PlayPage() {
     externalAudio: false,
   })
 
-  const [currentPosition, setCurrentPosition] = useState<[number, number]>([
-    36.3006, 137.8729,
-  ])
+  const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
 
   const [offlineBannerDismissed, setOfflineBannerDismissed] = useState(false)
   const [showPlaybackError, setShowPlaybackError] = useState(false)
@@ -106,20 +108,20 @@ export default function PlayPage() {
   // GPS 監視
   useEffect(() => {
     if (!navigator.geolocation) {
-      setPlaybackState((prev) => ({ ...prev, gpsStatus: "inactive" }))
+      setPlaybackState((prev: PlaybackState) => ({ ...prev, gpsStatus: "inactive" }))
       return
     }
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        setCurrentPosition([position.coords.latitude, position.coords.longitude])
-        setPlaybackState((prev) => ({
+        setCurrentPosition({ lat: position.coords.latitude, lng: position.coords.longitude })
+        setPlaybackState((prev: PlaybackState) => ({
           ...prev,
           gpsStatus: position.coords.accuracy > 100 ? "low-accuracy" : "active",
         }))
       },
       () => {
-        setPlaybackState((prev) => ({ ...prev, gpsStatus: "inactive" }))
+        setPlaybackState((prev: PlaybackState) => ({ ...prev, gpsStatus: "inactive" }))
       },
       {
         enableHighAccuracy: true,
@@ -141,7 +143,7 @@ export default function PlayPage() {
   }, [])
 
   const handleExternalAudioToggle = useCallback((checked: boolean) => {
-    setPlaybackState((prev) => ({ ...prev, externalAudio: checked }))
+    setPlaybackState((prev: PlaybackState) => ({ ...prev, externalAudio: checked }))
   }, [])
 
   const handlePlaybackErrorSkip = useCallback(() => {
@@ -189,10 +191,8 @@ export default function PlayPage() {
       {/* 地図エリア */}
       <div className="flex-1">
         <PlayMap
-          center={[36.3006, 137.8729]}
-          zoom={14}
           routePoints={MOCK_ROUTE_POINTS}
-          markers={MOCK_MARKERS}
+          items={MOCK_ITEMS}
           currentPosition={currentPosition}
         />
       </div>

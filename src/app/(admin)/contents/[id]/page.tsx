@@ -17,10 +17,10 @@ import {
 } from '@/components/ui/card'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { PageHeader } from '@/src/components/common/page-header'
-import { AudioGenerationModal } from '@/src/components/admin/audio-generation-modal'
-import type { Content } from '@/src/types/schemas'
-import { getContentById, generateScript, updateContent } from '@/src/lib/stubs'
+import { PageHeader } from '@/components/common/page-header'
+import { AudioGenerationModal } from '@/components/admin/audio-generation-modal'
+import type { Content } from '@/lib/types'
+import { getContentById, generateScript, updateContent } from '@/lib/stubs'
 
 const SCRIPT_BYTE_LIMIT = 4000
 
@@ -40,6 +40,8 @@ function getAudioStatusLabel(
       return { label: '未生成', variant: 'outline' }
     case 'error':
       return { label: 'エラー', variant: 'destructive' }
+    default:
+      return { label: '不明', variant: 'outline' }
   }
 }
 

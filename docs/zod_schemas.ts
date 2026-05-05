@@ -4,13 +4,11 @@ export const contentSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
   summary: z.string().optional(),
-  sourceText: z.string().optional(),
   sourceType: z.enum(['polling', 'manual', 'url']),
   tags: z.array(z.string()),
   audioStatus: z.enum(['pending', 'generating', 'generated', 'error']),
   radioRegistered: z.boolean(),
   scriptText: z.string().optional(),
-  audioUrl: z.string().optional(),
   audioDurationSec: z.number().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -26,7 +24,6 @@ export const programSchema = z.object({
     id: z.string().uuid(),
     position: z.object({ lat: z.number(), lng: z.number() }),
     locationName: z.string(),
-    contentId: z.string().uuid(),
     contentTitle: z.string(),
     audioDurationSec: z.number(),
   })),
@@ -43,16 +40,3 @@ export const pollingSiteSchema = z.object({
   lastStatus: z.enum(['success', 'error', 'pending']).optional(),
 })
 export type PollingSite = z.infer<typeof pollingSiteSchema>
-
-export type GpsStatus = 'active' | 'inactive' | 'low-accuracy'
-export type ServerStatus = 'connected' | 'disconnected'
-
-export interface PlaybackState {
-  currentContent: string | null
-  currentContentTitle?: string | null
-  remainingSeconds?: number
-  queue: string[]
-  gpsStatus: GpsStatus
-  serverStatus: ServerStatus
-  externalAudio: boolean
-}

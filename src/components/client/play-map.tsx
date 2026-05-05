@@ -21,8 +21,9 @@ interface ProgramItem {
 interface PlayMapProps {
   routePoints: RoutePoint[]
   items: ProgramItem[]
-  currentPosition: { lat: number; lng: number } | null
+  currentPosition: { lat: number; lng: number } | null | undefined
   playingItemId?: string
+  playedItemIds?: string[]
 }
 
 // 現在位置マーカー（青い丸）
@@ -79,7 +80,7 @@ function createPinIcon(status: 'waiting' | 'playing' | 'played'): L.DivIcon {
 }
 
 // 現在位置追従コンポーネント
-function FollowCurrentPosition({ position }: { position: { lat: number; lng: number } | null }) {
+function FollowCurrentPosition({ position }: { position: { lat: number; lng: number } | null | undefined }) {
   const map = useMap()
   const hasInitialized = useRef(false)
 
@@ -98,6 +99,7 @@ export default function PlayMap({
   items,
   currentPosition,
   playingItemId,
+  playedItemIds = [],
 }: PlayMapProps) {
   // 路線ポイントを [lat, lng] 形式に変換
   const polylinePositions: [number, number][] = routePoints.map(p => [p.lat, p.lng])
@@ -135,6 +137,8 @@ export default function PlayMap({
       {items.map((item, index) => {
         const status = item.id === playingItemId
           ? 'playing'
+          : playedItemIds.includes(item.id)
+          ? 'played'
           : index === 0 && !playingItemId
           ? 'playing'
           : 'waiting'
