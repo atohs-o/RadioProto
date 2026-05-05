@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code
+CLAUDE.local.md
+~/.claude/plans/
+.claude/local-*
+
+# 機密
+.env
+.env.*
+!.env.example
+secrets/

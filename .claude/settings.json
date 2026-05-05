@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm run *)",
+      "Bash(pnpm *)",
+      "Bash(npx supabase db diff)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Read",
+      "Glob",
+      "Grep"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(npx supabase migration up)",
+      "Bash(npx vercel *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Bash(cat .env*)",
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(curl *anthropic.com*)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(yarn *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f $CLAUDE_FILE_PATHS && (npx prettier --write $CLAUDE_FILE_PATHS 2>/dev/null; npx tsc --noEmit 2>&1 | head -30) || true"
+          }
+        ]
+      }
+    ]
+  }
+}

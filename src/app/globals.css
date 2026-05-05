@@ -1,26 +1,206 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* AutoDJ Radio brand colors — Tailwind utilities eg. bg-brand-orange, text-brand-gray */
+  --color-brand-orange:        var(--brand-orange);
+  --color-brand-orange-400:    var(--brand-orange-400);
+  --color-brand-orange-300:    var(--brand-orange-300);
+  --color-brand-orange-200:    var(--brand-orange-200);
+  --color-brand-orange-100:    var(--brand-orange-100);
+  --color-brand-gray:          var(--brand-gray);
+  --color-brand-gray-400:      var(--brand-gray-400);
+  --color-brand-gray-300:      var(--brand-gray-300);
+  --color-brand-gray-200:      var(--brand-gray-200);
+  --color-brand-gray-100:      var(--brand-gray-100);
+  --color-brand-blue:          var(--brand-blue);
+  --color-brand-red:           var(--brand-red);
+  --color-brand-green:         var(--brand-green);
+  --color-brand-warning:       var(--brand-warning);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* ── shadcn Nova base (ライトモード) ── */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  /* primary → コーポレートオレンジ (#FA5012) */
+  --primary: oklch(0.607 0.208 38.5);
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+
+  /* muted-foreground → コーポレートグレー (#78808E) */
+  --muted-foreground: oklch(0.554 0.014 256.8);
+
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  /* destructive → ブランドレッド (#D86A6A) */
+  --destructive: oklch(0.614 0.135 18.5);
+
+  /* border / input → グレーグラデーション最淡 (#DEE0E3) */
+  --border: oklch(0.908 0.005 256.8);
+  --input: oklch(0.908 0.005 256.8);
+  --ring: oklch(0.607 0.208 38.5);  /* primary に合わせる */
+
+  /* chart: グレーグラデーション */
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+
+  /* sidebar */
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.607 0.208 38.5);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.908 0.005 256.8);
+  --sidebar-ring: oklch(0.607 0.208 38.5);
+
+  /* ── AutoDJ Radio ブランドカラー ── */
+  /* Orange グラデーション */
+  --brand-orange:      #FA5012;  /* Corporate */
+  --brand-orange-400:  #FB7342;  /* hover / active */
+  --brand-orange-300:  #FC9671;  /* 補助アクション */
+  --brand-orange-200:  #FDB9A1;  /* 薄めアクセント */
+  --brand-orange-100:  #FEDCD0;  /* 背景 tint */
+
+  /* Gray グラデーション */
+  --brand-gray:        #78808E;  /* Corporate / muted text */
+  --brand-gray-400:    #9AA0AB;  /* secondary text */
+  --brand-gray-300:    #ABB0B9;  /* placeholder */
+  --brand-gray-200:    #BCC0C7;  /* disabled */
+  --brand-gray-100:    #DEE0E3;  /* border / divider */
+
+  /* Accent */
+  --brand-blue:        #5B7DBE;  /* info / link */
+  --brand-red:         #D86A6A;  /* destructive / error */
+  --brand-green:       #4D9B6F;  /* success / OK インジケーター */
+  --brand-warning:     #E8A838;  /* warning / 注意インジケーター */
+}
+
+.dark {
+  /* ── shadcn Nova base (ダークモード) ── */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+
+  /* primary → オレンジは暗い背景でも映えるが少し明るく */
+  --primary: oklch(0.680 0.195 38.5);
+  --primary-foreground: oklch(0.145 0 0);
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.660 0.150 18.5);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.680 0.195 38.5);
+
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.680 0.195 38.5);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.680 0.195 38.5);
+
+  /* ── AutoDJ Radio ブランドカラー（ダーク時も同値、必要なら個別上書き） ── */
+  --brand-orange:      #FA5012;
+  --brand-orange-400:  #FB7342;
+  --brand-orange-300:  #FC9671;
+  --brand-orange-200:  #FDB9A1;
+  --brand-orange-100:  #FEDCD0;
+
+  --brand-gray:        #78808E;
+  --brand-gray-400:    #9AA0AB;
+  --brand-gray-300:    #ABB0B9;
+  --brand-gray-200:    #BCC0C7;
+  --brand-gray-100:    #DEE0E3;
+
+  --brand-blue:        #5B7DBE;
+  --brand-red:         #D86A6A;
+  --brand-green:       #4D9B6F;
+  --brand-warning:     #E8A838;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }
