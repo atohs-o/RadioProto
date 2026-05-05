@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
+import type { AudioFileInfo } from '@/lib/schemas/content'
 
 type GenerationStatus = 'idle' | 'generating' | 'done' | 'error'
 
@@ -20,7 +21,8 @@ type AudioGenerationModalProps = {
   onOpenChange: (open: boolean) => void
   contentId: string
   scriptText: string
-  onComplete: (audioUrl: string, durationSeconds: number) => void
+  ttsModel: string
+  onComplete: (audioFile: AudioFileInfo) => void
   onCancel: () => void
 }
 
@@ -29,6 +31,7 @@ export function AudioGenerationModal({
   onOpenChange,
   contentId,
   scriptText,
+  ttsModel,
   onComplete,
   onCancel,
 }: AudioGenerationModalProps) {
@@ -48,12 +51,8 @@ export function AudioGenerationModal({
     setStatus('generating')
     setFakeProgress(0)
 
-    // 待機中の疑似プログレス（0→85%を30秒かけて進める）
     const progressInterval = setInterval(() => {
-      setFakeProgress((prev) => {
-        if (prev >= 85) return prev
-        return prev + 2
-      })
+      setFakeProgress((prev) => (prev >= 85 ? prev : prev + 2))
     }, 700)
 
     async function generate() {
@@ -61,15 +60,22 @@ export function AudioGenerationModal({
         const res = await fetch('/api/admin/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contentId, scriptText }),
+          body: JSON.stringify({ contentId, scriptText, model: ttsModel }),
           signal: controller.signal,
         })
 
         clearInterval(progressInterval)
 
-        const data = await res.json() as { audioUrl?: string; durationSeconds?: number; error?: string }
+        const data = await res.json() as {
+          audioUrl?: string
+          durationSeconds?: number
+          audioFileId?: string
+          ttsModel?: string
+          createdAt?: string
+          error?: string
+        }
 
-        if (!res.ok || !data.audioUrl) {
+        if (!res.ok || !data.audioUrl || !data.audioFileId) {
           setErrorMessage(data.error ?? '音声生成に失敗しました')
           setStatus('error')
           return
@@ -77,8 +83,15 @@ export function AudioGenerationModal({
 
         setFakeProgress(100)
         setStatus('done')
+        const audioFile: AudioFileInfo = {
+          id: data.audioFileId,
+          url: data.audioUrl,
+          durationSeconds: data.durationSeconds,
+          ttsModel: data.ttsModel ?? ttsModel,
+          createdAt: data.createdAt ?? new Date().toISOString(),
+        }
         setTimeout(() => {
-          onComplete(data.audioUrl!, data.durationSeconds ?? 0)
+          onComplete(audioFile)
           onOpenChange(false)
         }, 600)
       } catch (e) {
@@ -128,27 +141,19 @@ export function AudioGenerationModal({
               </p>
             </div>
           )}
-
           {status === 'done' && (
             <div className="flex flex-col items-center gap-2">
               <Progress value={100} className="h-2 w-full" />
               <p className="text-center text-sm text-muted-foreground">完了しました</p>
             </div>
           )}
-
           {status === 'error' && (
-            <p className="text-center text-sm text-destructive">
-              {errorMessage}
-            </p>
+            <p className="text-center text-sm text-destructive">{errorMessage}</p>
           )}
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={status === 'done'}
-          >
+          <Button variant="outline" onClick={handleCancel} disabled={status === 'done'}>
             キャンセル
           </Button>
         </DialogFooter>

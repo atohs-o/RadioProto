@@ -1,5 +1,22 @@
 import { z } from 'zod'
 
+export const ScriptVersionSchema = z.object({
+  id: z.string().uuid(),
+  text: z.string(),
+  model: z.string(),
+  createdAt: z.string(),
+})
+export type ScriptVersion = z.infer<typeof ScriptVersionSchema>
+
+export const AudioFileInfoSchema = z.object({
+  id: z.string().uuid(),
+  url: z.string(),
+  durationSeconds: z.number().optional(),
+  ttsModel: z.string(),
+  createdAt: z.string(),
+})
+export type AudioFileInfo = z.infer<typeof AudioFileInfoSchema>
+
 export const contentSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
@@ -12,6 +29,9 @@ export const contentSchema = z.object({
   scriptText: z.string().optional(),
   audioUrl: z.string().optional(),
   audioDurationSec: z.number().optional(),
+  scriptVersions: z.array(ScriptVersionSchema).optional(),
+  allAudioFiles: z.array(AudioFileInfoSchema).optional(),
+  activeAudioFileId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -23,6 +43,8 @@ export const ContentMetadataSchema = z.object({
   audio_status: z.enum(['pending', 'generating', 'generated', 'error']).default('pending'),
   radio_registered: z.boolean().default(false),
   tags: z.array(z.string()).default([]),
+  script_versions: z.array(ScriptVersionSchema).default([]),
+  active_audio_file_id: z.string().optional(),
 })
 
 export type ContentMetadata = z.infer<typeof ContentMetadataSchema>

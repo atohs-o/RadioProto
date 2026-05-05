@@ -3,8 +3,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   ContentMetadataSchema,
   ContentFormSchema,
+  AudioFileInfoSchema,
   type Content,
   type ContentForm,
+  type AudioFileInfo,
 } from '@/lib/schemas/content'
 import type { Database, Json } from '@/types/database.types'
 
@@ -54,26 +56,51 @@ export async function getContentById(id: string): Promise<Content | null> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('contents')
-    .select('*, audio_files(id, storage_path, duration_seconds)')
+    .select('*')
     .eq('id', id)
     .maybeSingle()
 
   if (error) throw new Error(error.message)
   if (!data) return null
 
-  const audioFiles = Array.isArray(data.audio_files) ? data.audio_files : []
-  const latestAudio = (audioFiles[0] ?? null) as AudioFileRow | null
+  const adminClient = createAdminClient()
 
-  let signedAudioUrl: string | undefined
-  if (latestAudio?.storage_path) {
-    const adminClient = createAdminClient()
-    const { data: signedData } = await adminClient.storage
-      .from('audio-files')
-      .createSignedUrl(latestAudio.storage_path, 3600)
-    signedAudioUrl = signedData?.signedUrl ?? undefined
+  // 最新3件の音声ファイルを取得
+  const { data: audioRows } = await adminClient
+    .from('audio_files')
+    .select('id, storage_path, duration_seconds, tts_model, created_at')
+    .eq('content_id', id)
+    .order('created_at', { ascending: false })
+    .limit(3)
+
+  // 各音声ファイルの署名付きURLを生成
+  const allAudioFiles: AudioFileInfo[] = await Promise.all(
+    (audioRows ?? []).map(async (af) => {
+      const { data: sd } = await adminClient.storage
+        .from('audio-files')
+        .createSignedUrl(af.storage_path, 3600)
+      return AudioFileInfoSchema.parse({
+        id: af.id,
+        url: sd?.signedUrl ?? '',
+        durationSeconds: af.duration_seconds ?? undefined,
+        ttsModel: af.tts_model ?? '',
+        createdAt: af.created_at,
+      })
+    })
+  )
+
+  const meta = ContentMetadataSchema.parse(data.metadata ?? {})
+  const activeId = meta.active_audio_file_id
+  const activeAudio = allAudioFiles.find((f) => f.id === activeId) ?? allAudioFiles[0]
+
+  const base = toContent(data as unknown as ContentRow, null, activeAudio?.url)
+  return {
+    ...base,
+    audioDurationSec: activeAudio?.durationSeconds,
+    allAudioFiles,
+    activeAudioFileId: activeAudio?.id,
+    scriptVersions: meta.script_versions,
   }
-
-  return toContent(data as unknown as ContentRow, latestAudio, signedAudioUrl)
 }
 
 export async function createContent(form: ContentForm): Promise<Content> {
@@ -111,19 +138,26 @@ export async function updateContent(
 ): Promise<Content | null> {
   const supabase = await createClient()
 
-  const existing = await getContentById(id)
-  if (!existing) return null
+  const { data: currentRow } = await supabase
+    .from('contents')
+    .select('metadata')
+    .eq('id', id)
+    .single()
+  if (!currentRow) return null
 
+  const meta = ContentMetadataSchema.parse(currentRow.metadata ?? {})
   const newTags =
     form.tags_csv !== undefined
       ? form.tags_csv.split(',').map((t) => t.trim()).filter(Boolean)
-      : existing.tags
+      : meta.tags
 
   const newMeta = {
-    source_text: form.source_text !== undefined ? form.source_text : (existing.sourceText ?? ''),
-    audio_status: existing.audioStatus,
-    radio_registered: existing.radioRegistered,
+    source_text: form.source_text !== undefined ? form.source_text : (meta.source_text ?? ''),
+    audio_status: meta.audio_status,
+    radio_registered: meta.radio_registered,
     tags: newTags,
+    script_versions: meta.script_versions,
+    active_audio_file_id: meta.active_audio_file_id,
   }
 
   const updatePayload: Database['public']['Tables']['contents']['Update'] = {
@@ -144,7 +178,7 @@ export async function updateContent(
     .single()
 
   if (error) throw new Error(error.message)
-  return toContent(data)
+  return toContent(data as unknown as ContentRow)
 }
 
 export async function deleteContent(id: string): Promise<void> {

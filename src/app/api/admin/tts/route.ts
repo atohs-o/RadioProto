@@ -11,6 +11,7 @@ export const maxDuration = 60
 const RequestSchema = z.object({
   contentId: z.string().uuid('コンテンツIDが不正です'),
   scriptText: z.string().min(1, '台本テキストを入力してください').max(4000),
+  model: z.string().optional(),
 })
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -27,7 +28,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? '入力が不正です' }, { status: 400 })
     }
 
-    const { contentId, scriptText } = parsed.data
+    const { contentId, scriptText, model } = parsed.data
+    const ttsModel = model ?? process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
     const adminClient = createAdminClient()
 
     // audio_status を 'generating' に更新
@@ -47,13 +49,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       .update({ metadata: { ...currentMeta, audio_status: 'generating' } })
       .eq('id', contentId)
 
-    // TTS 音声生成
-    const { wavBuffer, durationSeconds } = await synthesize(scriptText)
+    // TTS 音声生成（モデル上書き可）
+    const { wavBuffer, durationSeconds } = await synthesize(scriptText, undefined, ttsModel)
 
     // Supabase Storage にアップロード
     const audioFileId = crypto.randomUUID()
     const storagePath = `${contentId}/${audioFileId}.wav`
-    const ttsModel = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
+    const createdAt = new Date().toISOString()
 
     const { error: uploadError } = await adminClient.storage
       .from('audio-files')
@@ -93,10 +95,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: '音声ファイル情報の保存に失敗しました' }, { status: 500 })
     }
 
-    // audio_status を 'generated' に更新
+    // audio_status を 'generated' に更新し、active_audio_file_id を設定
     await adminClient
       .from('contents')
-      .update({ metadata: { ...currentMeta, audio_status: 'generated' } })
+      .update({
+        metadata: {
+          ...currentMeta,
+          audio_status: 'generated',
+          active_audio_file_id: audioFileId,
+        },
+      })
       .eq('id', contentId)
 
     // 署名付きURL生成（1時間有効）
@@ -112,6 +120,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({
       audioUrl: signedData.signedUrl,
       durationSeconds,
+      audioFileId,
+      ttsModel,
+      createdAt,
     })
   } catch (e) {
     console.error('tts route error:', e)

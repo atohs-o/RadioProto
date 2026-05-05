@@ -18,12 +18,13 @@ const DEFAULT_SPEAKERS: [TtsSpeaker, TtsSpeaker] = [
 
 export async function synthesize(
   scriptText: string,
-  speakers: [TtsSpeaker, TtsSpeaker] = DEFAULT_SPEAKERS
+  speakers: [TtsSpeaker, TtsSpeaker] = DEFAULT_SPEAKERS,
+  modelOverride?: string
 ): Promise<SynthesisResult> {
   const chunks = splitIntoChunks(scriptText)
   const accessToken = await getVertexAccessToken()
   const audioBuffers = await Promise.all(
-    chunks.map((chunk) => synthesizeChunk(chunk, speakers, accessToken))
+    chunks.map((chunk) => synthesizeChunk(chunk, speakers, accessToken, modelOverride))
   )
   const pcmBuffer = concatenateAudio(audioBuffers)
   const wavBuffer = pcmToWav(pcmBuffer, 24000)
@@ -39,9 +40,10 @@ function splitIntoChunks(text: string): string[] {
 async function synthesizeChunk(
   text: string,
   speakers: [TtsSpeaker, TtsSpeaker],
-  accessToken: string
+  accessToken: string,
+  modelOverride?: string
 ): Promise<Buffer> {
-  const model = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
+  const model = modelOverride ?? process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
   const url = buildVertexUrl(model)
 
   const textWithStyle = TTS_CONFIG.stylePrompt

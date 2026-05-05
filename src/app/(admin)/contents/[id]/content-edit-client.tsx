@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Sparkles, Volume2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Sparkles, Volume2, RefreshCw, Check } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,14 +15,28 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import { PageHeader } from '@/components/common/page-header'
 import { AudioGenerationModal } from '@/components/admin/audio-generation-modal'
-import type { Content } from '@/lib/schemas/content'
-import { createContentAction, updateContentAction } from '../actions'
+import type { Content, ScriptVersion, AudioFileInfo } from '@/lib/schemas/content'
+import { createContentAction, updateContentAction, setActiveAudioAction } from '../actions'
 
 const SCRIPT_BYTE_LIMIT = 4000
+
+const TTS_MODELS = [
+  { value: 'gemini-2.5-flash-tts', label: 'Gemini 2.5 Flash（コスト優先）' },
+  { value: 'gemini-2.5-pro-tts',   label: 'Gemini 2.5 Pro（クオリティ優先）' },
+] as const
+
+type TtsModelValue = typeof TTS_MODELS[number]['value']
 
 function getByteLength(str: string): number {
   return new Blob([str]).size
@@ -32,17 +46,22 @@ function getAudioStatusLabel(
   status: Content['audioStatus']
 ): { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' } {
   switch (status) {
-    case 'generated':
-      return { label: '生成済み', variant: 'default' }
-    case 'generating':
-      return { label: '生成中', variant: 'secondary' }
-    case 'pending':
-      return { label: '未生成', variant: 'outline' }
-    case 'error':
-      return { label: 'エラー', variant: 'destructive' }
-    default:
-      return { label: '不明', variant: 'outline' }
+    case 'generated':  return { label: '生成済み', variant: 'default' }
+    case 'generating': return { label: '生成中',   variant: 'secondary' }
+    case 'pending':    return { label: '未生成',   variant: 'outline' }
+    case 'error':      return { label: 'エラー',   variant: 'destructive' }
+    default:           return { label: '不明',     variant: 'outline' }
   }
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 interface Props {
@@ -58,6 +77,7 @@ export function ContentEditClient({ content }: Props) {
   const [generatingScript, setGeneratingScript] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
   const [audioModalOpen, setAudioModalOpen] = useState(false)
+  const [ttsModel, setTtsModel] = useState<TtsModelValue>('gemini-2.5-flash-tts')
 
   const [title, setTitle] = useState(content?.title ?? '')
   const [sourceText, setSourceText] = useState(content?.sourceText ?? content?.summary ?? '')
@@ -67,8 +87,14 @@ export function ContentEditClient({ content }: Props) {
     content?.audioStatus ?? 'pending'
   )
   const [audioUrl, setAudioUrl] = useState<string | undefined>(content?.audioUrl)
-  const [audioDurationSec, setAudioDurationSec] = useState<number | undefined>(
-    content?.audioDurationSec
+  const [scriptVersions, setScriptVersions] = useState<ScriptVersion[]>(
+    content?.scriptVersions ?? []
+  )
+  const [allAudioFiles, setAllAudioFiles] = useState<AudioFileInfo[]>(
+    content?.allAudioFiles ?? []
+  )
+  const [activeAudioFileId, setActiveAudioFileId] = useState<string | undefined>(
+    content?.activeAudioFileId
   )
 
   const handleGenerateScript = useCallback(async () => {
@@ -79,20 +105,33 @@ export function ContentEditClient({ content }: Props) {
       const res = await fetch('/api/admin/scriptify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceText }),
+        body: JSON.stringify({ sourceText, contentId: content?.id }),
       })
-      const data = await res.json() as { scriptText?: string; error?: string }
+      const data = await res.json() as {
+        scriptText?: string
+        version?: { id: string; model: string; createdAt: string }
+        error?: string
+      }
       if (!res.ok || !data.scriptText) {
         setScriptError(data.error ?? '台本生成に失敗しました')
         return
       }
       setScriptText(data.scriptText)
+      if (data.version) {
+        const newVersion: ScriptVersion = {
+          id: data.version.id,
+          text: data.scriptText,
+          model: data.version.model,
+          createdAt: data.version.createdAt,
+        }
+        setScriptVersions((prev) => [newVersion, ...prev].slice(0, 3))
+      }
     } catch {
       setScriptError('台本生成中にエラーが発生しました')
     } finally {
       setGeneratingScript(false)
     }
-  }, [sourceText])
+  }, [sourceText, content?.id])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -128,11 +167,19 @@ export function ContentEditClient({ content }: Props) {
     }
   }, [isNew, content, title, sourceText, scriptText, tags, router])
 
-  const handleAudioComplete = useCallback((url: string, duration: number) => {
+  const handleAudioComplete = useCallback((audioFile: AudioFileInfo) => {
     setAudioStatus('generated')
-    setAudioUrl(url)
-    setAudioDurationSec(duration)
+    setAudioUrl(audioFile.url)
+    setAllAudioFiles((prev) => [audioFile, ...prev].slice(0, 3))
+    setActiveAudioFileId(audioFile.id)
   }, [])
+
+  const handleSetActiveAudio = useCallback(async (audioFile: AudioFileInfo) => {
+    if (!content?.id) return
+    setActiveAudioFileId(audioFile.id)
+    setAudioUrl(audioFile.url)
+    await setActiveAudioAction(content.id, audioFile.id)
+  }, [content?.id])
 
   const scriptByteLength = getByteLength(scriptText)
   const isOverLimit = scriptByteLength > SCRIPT_BYTE_LIMIT
@@ -159,12 +206,11 @@ export function ContentEditClient({ content }: Props) {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* 左カラム: テキスト */}
         <Card>
           <CardHeader>
             <CardTitle>コンテンツ情報</CardTitle>
-            <CardDescription>
-              テキストを入力し、AIで台本を生成します
-            </CardDescription>
+            <CardDescription>テキストを入力し、AIで台本を生成します</CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
@@ -210,11 +256,7 @@ export function ContentEditClient({ content }: Props) {
               <Field>
                 <div className="flex items-center justify-between">
                   <FieldLabel htmlFor="scriptText">台本テキスト</FieldLabel>
-                  <span
-                    className={`text-xs ${
-                      isOverLimit ? 'text-destructive' : 'text-muted-foreground'
-                    }`}
-                  >
+                  <span className={`text-xs ${isOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
                     {scriptByteLength} / {SCRIPT_BYTE_LIMIT} バイト
                   </span>
                 </div>
@@ -232,6 +274,36 @@ export function ContentEditClient({ content }: Props) {
                   </p>
                 )}
               </Field>
+
+              {/* 台本生成履歴 */}
+              {scriptVersions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    台本生成履歴（{scriptVersions.length}件）
+                  </p>
+                  <div className="space-y-1">
+                    {scriptVersions.map((v) => (
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between rounded-md border px-3 py-2"
+                      >
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-mono">{v.model}</span>
+                          <span className="ml-2">{formatDate(v.createdAt)}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setScriptText(v.text)}
+                        >
+                          適用
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <Field>
                 <FieldLabel htmlFor="tags">内容分類タグ</FieldLabel>
@@ -259,10 +331,11 @@ export function ContentEditClient({ content }: Props) {
           </CardContent>
         </Card>
 
+        {/* 右カラム: 音声 */}
         <Card>
           <CardHeader>
             <CardTitle>音声</CardTitle>
-            <CardDescription>台本から音声を生成します（Host/Guide 2名）</CardDescription>
+            <CardDescription>台本から音声を生成します（SPEAKER_1 / SPEAKER_2）</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center gap-2">
@@ -270,52 +343,93 @@ export function ContentEditClient({ content }: Props) {
               <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
             </div>
 
-            {audioStatus === 'generated' && audioUrl && (
-              <div className="rounded-lg bg-muted p-4">
-                <audio controls className="w-full" src={audioUrl}>
-                  <track kind="captions" />
-                </audio>
-                {audioDurationSec !== undefined && audioDurationSec > 0 && (
-                  <p className="mt-2 text-right text-xs text-muted-foreground">
-                    {Math.floor(audioDurationSec / 60)}分{audioDurationSec % 60}秒
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2">
+            {/* 生成ボタン + モデル選択 */}
+            <div className="space-y-2">
               {isNew ? (
-                <p className="text-sm text-muted-foreground">
-                  保存後に音声を生成できます。
-                </p>
-              ) : audioStatus === 'generated' ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setAudioModalOpen(true)}
-                  disabled={!scriptText.trim() || isOverLimit}
-                >
-                  <RefreshCw className="mr-2 size-4" />
-                  音声を再生成
-                </Button>
+                <p className="text-sm text-muted-foreground">保存後に音声を生成できます。</p>
               ) : (
-                <Button
-                  onClick={() => setAudioModalOpen(true)}
-                  disabled={
-                    !scriptText.trim() ||
-                    isOverLimit ||
-                    audioStatus === 'generating'
-                  }
-                >
-                  <Volume2 className="mr-2 size-4" />
-                  音声を生成
-                </Button>
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Select
+                      value={ttsModel}
+                      onValueChange={(v) => setTtsModel(v as TtsModelValue)}
+                    >
+                      <SelectTrigger className="w-56">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TTS_MODELS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      onClick={() => setAudioModalOpen(true)}
+                      variant={audioStatus === 'generated' ? 'outline' : 'default'}
+                      disabled={!scriptText.trim() || isOverLimit || audioStatus === 'generating'}
+                    >
+                      {audioStatus === 'generated' ? (
+                        <RefreshCw className="mr-2 size-4" />
+                      ) : (
+                        <Volume2 className="mr-2 size-4" />
+                      )}
+                      {audioStatus === 'generated' ? '音声を再生成' : '音声を生成'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    台本テキストは{SCRIPT_BYTE_LIMIT}バイト以内にしてください。数十秒かかります。
+                  </p>
+                </>
               )}
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              音声生成には数十秒〜数分かかる場合があります。
-              台本テキストは{SCRIPT_BYTE_LIMIT}バイト以内にしてください。
-            </p>
+            {/* 音声ファイル一覧（最大3件） */}
+            {allAudioFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  生成済み音声（{allAudioFiles.length}件）
+                </p>
+                <div className="space-y-3">
+                  {allAudioFiles.map((af) => {
+                    const isActive = af.id === activeAudioFileId
+                    return (
+                      <div
+                        key={af.id}
+                        className={`rounded-lg border p-3 ${isActive ? 'border-primary bg-primary/5' : ''}`}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-mono">{af.ttsModel}</span>
+                            <span className="ml-2">{formatDate(af.createdAt)}</span>
+                          </div>
+                          {isActive ? (
+                            <Badge variant="default" className="text-xs gap-1">
+                              <Check className="size-3" />
+                              使用中
+                            </Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => handleSetActiveAudio(af)}
+                            >
+                              使用する
+                            </Button>
+                          )}
+                        </div>
+                        <audio controls className="w-full" src={af.url}>
+                          <track kind="captions" />
+                        </audio>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -326,6 +440,7 @@ export function ContentEditClient({ content }: Props) {
           onOpenChange={setAudioModalOpen}
           contentId={content.id}
           scriptText={scriptText}
+          ttsModel={ttsModel}
           onComplete={handleAudioComplete}
           onCancel={() => setAudioModalOpen(false)}
         />

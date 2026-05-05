@@ -62,3 +62,31 @@ export async function deleteContentAction(id: string): Promise<ActionResult> {
     return { error: e instanceof Error ? e.message : '削除に失敗しました' }
   }
 }
+
+export async function setActiveAudioAction(
+  contentId: string,
+  audioFileId: string
+): Promise<ActionResult> {
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = await createClient()
+  try {
+    const { data: row } = await supabase
+      .from('contents')
+      .select('metadata')
+      .eq('id', contentId)
+      .single()
+    if (!row) return { error: 'コンテンツが見つかりません' }
+
+    const meta = { ...(row.metadata as Record<string, unknown> ?? {}), active_audio_file_id: audioFileId }
+    const { error } = await supabase
+      .from('contents')
+      .update({ metadata: meta })
+      .eq('id', contentId)
+
+    if (error) return { error: error.message }
+    revalidatePath(`/contents/${contentId}`)
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : '更新に失敗しました' }
+  }
+}

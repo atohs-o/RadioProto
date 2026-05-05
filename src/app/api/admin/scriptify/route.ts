@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getVertexAccessToken, buildVertexUrl } from '@/lib/vertex-ai'
 import { buildScriptifyPrompt } from '@/prompts/scriptify'
+import { ContentMetadataSchema } from '@/lib/schemas/content'
 
 const RequestSchema = z.object({
   sourceText: z.string().min(1, '元テキストを入力してください').max(20000),
+  contentId: z.string().uuid().optional(),
 })
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -22,7 +25,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? '入力が不正です' }, { status: 400 })
     }
 
-    const { sourceText } = parsed.data
+    const { sourceText, contentId } = parsed.data
     const prompt = buildScriptifyPrompt({ sourceText })
     const model = process.env.GEMINI_SCRIPTIFY_MODEL ?? 'gemini-2.5-flash'
 
@@ -57,7 +60,43 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: '台本の生成結果が空でした' }, { status: 502 })
     }
 
-    return NextResponse.json({ scriptText: scriptText.trim() })
+    const trimmed = scriptText.trim()
+
+    // contentId が渡された場合は script_versions に保存（最大3件）
+    if (contentId) {
+      const versionId = crypto.randomUUID()
+      const createdAt = new Date().toISOString()
+      const adminClient = createAdminClient()
+
+      const { data: contentRow } = await adminClient
+        .from('contents')
+        .select('metadata')
+        .eq('id', contentId)
+        .single()
+
+      if (contentRow) {
+        const meta = ContentMetadataSchema.parse(contentRow.metadata ?? {})
+        const newVersion = { id: versionId, text: trimmed, model, createdAt }
+        const updatedVersions = [newVersion, ...meta.script_versions].slice(0, 3)
+
+        await adminClient
+          .from('contents')
+          .update({
+            metadata: {
+              ...contentRow.metadata as Record<string, unknown>,
+              script_versions: updatedVersions,
+            },
+          })
+          .eq('id', contentId)
+
+        return NextResponse.json({
+          scriptText: trimmed,
+          version: { id: versionId, model, createdAt },
+        })
+      }
+    }
+
+    return NextResponse.json({ scriptText: trimmed })
   } catch (e) {
     console.error('scriptify route error:', e)
     return NextResponse.json({ error: '台本生成中にエラーが発生しました' }, { status: 500 })
