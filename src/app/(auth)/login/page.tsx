@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { login } from '@/lib/stubs'
+import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const searchParams = useSearchParams()
@@ -27,16 +27,17 @@ export default function LoginPage() {
     setIsLoading(true)
     setError(null)
 
-    const result = await login(email, password)
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (result.success) {
-      // TODO: Claude Codeがリダイレクト処理を実装
+    if (!authError) {
+      // ソフトナビゲーションではなくフルリロードで遷移（middleware がセッション Cookie を確実に読む）
       window.location.href = '/contents'
     } else {
-      setError(result.error ?? 'ログインに失敗しました')
+      console.error('[login] Supabase auth error:', authError.message, authError.status)
+      setError('メールアドレスまたはパスワードが正しくありません')
+      setIsLoading(false)
     }
-
-    setIsLoading(false)
   }
 
   return (

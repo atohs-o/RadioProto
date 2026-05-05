@@ -2,6 +2,7 @@
   "name": "autodj_radio",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -39,6 +40,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.3",
     "@turf/boolean-point-in-polygon": "^7.3.5",
     "@vercel/analytics": "^2.0.1",
@@ -78,6 +80,7 @@
     "eslint-config-next": "16.2.4",
     "prettier": "^3.8.3",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

@@ -6,6 +6,7 @@ import { FileTextIcon, RadioIcon, GlobeIcon } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -17,6 +18,7 @@ import {
   SidebarInset,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
+import { LogoutButton } from './_components/LogoutButton'
 
 const NAV_ITEMS = [
   {
@@ -74,6 +76,9 @@ export default function AdminLayout({
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarFooter className="border-t border-sidebar-border p-2">
+          <LogoutButton />
+        </SidebarFooter>
       </Sidebar>
       <SidebarInset>
         <header className="flex h-14 items-center gap-4 border-b px-4 md:px-6">
