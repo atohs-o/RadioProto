@@ -55,7 +55,7 @@ ${siteText}`
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 2048,
         responseMimeType: 'application/json',
       },
     }),
@@ -66,10 +66,32 @@ ${siteText}`
     throw new Error(`Gemini API エラー: ${response.status} ${body}`)
   }
 
-  const data = await response.json()
-  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const responseText = await response.text()
+  let data: unknown
+  try {
+    data = JSON.parse(responseText)
+  } catch (e) {
+    throw new Error(
+      `Gemini レスポンスの JSON パース失敗: ${e instanceof Error ? e.message : String(e)} — 先頭100文字: ${responseText.slice(0, 100)}`
+    )
+  }
 
-  const parsed = JSON.parse(text) as GeminiResult
+  const text: string =
+    (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })
+      ?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+  let parsed: GeminiResult
+  try {
+    // ```json ... ``` ブロックを除去してから制御文字をサニタイズ
+    const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+    const sanitized = stripped.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+    parsed = JSON.parse(sanitized) as GeminiResult
+  } catch (e) {
+    throw new Error(
+      `Gemini 出力の JSON パース失敗: ${e instanceof Error ? e.message : String(e)} — 先頭100文字: ${text.slice(0, 100)}`
+    )
+  }
+
   if (!parsed.title || !parsed.script) {
     throw new Error('Gemini のレスポンスに必須フィールドがありません')
   }

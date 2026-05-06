@@ -406,9 +406,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
 
 [functions.poll-sites]
-# JST 08:00 / 12:00 / 16:00 = UTC 23:00 / 03:00 / 07:00
-schedule = "0 23,3,7 * * *"
+verify_jwt = false
 
 [functions.ping-keep-alive]
-# 3日に1回 UTC 00:00（Supabase Free tier auto-pause 対策）
-schedule = "0 0 */3 * *"
+verify_jwt = false
