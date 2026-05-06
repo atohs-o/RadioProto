@@ -1,250 +1,534 @@
-"use client"
+'use client'
 
-import { useState, useEffect, useCallback } from "react"
-import dynamic from "next/dynamic"
-import { Navigation, Wifi, WifiOff, Radio, Volume2, Power } from "lucide-react"
-import { StatusIndicator } from "@/components/client/status-indicator"
-import { OfflineBanner } from "@/components/client/offline-banner"
-import { PlaybackErrorDialog } from "@/components/client/playback-error-dialog"
-import { EndTripDialog } from "@/components/client/end-trip-dialog"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import type { PlaybackState, GpsStatus, ServerStatus } from "@/types"
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import { Radio, Volume2, Power } from 'lucide-react'
+import { StatusIndicator } from '@/components/client/status-indicator'
+import { OfflineBanner } from '@/components/client/offline-banner'
+import { PlaybackErrorDialog } from '@/components/client/playback-error-dialog'
+import { EndTripDialog } from '@/components/client/end-trip-dialog'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Spinner } from '@/components/ui/spinner'
+import { haversineDistance, smoothGps } from '@/lib/geo'
+import { createLocationChannel, sendLocation } from '@/lib/realtime'
+import type { ClientProgram, ClientProgramItem } from '@/lib/schemas/client'
+import type { GpsStatus, ServerStatus } from '@/lib/types'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
-// Leaflet は SSR 無効化
-const PlayMap = dynamic(
-  () => import("@/components/client/play-map"),
-  { ssr: false }
-)
+const PlayMap = dynamic(() => import('@/components/client/play-map'), { ssr: false })
 
-// スタブデータ
-const MOCK_ROUTE_POINTS = [
-  { lat: 36.3006, lng: 137.8729 },
-  { lat: 36.3100, lng: 137.8750 },
-  { lat: 36.3234, lng: 137.8821 },
-]
+const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')
+const AUDIO_CACHE = 'autodj-audio-v1'
+const LOCATION_LOG_INTERVAL_MS = 30_000
 
-const MOCK_ITEMS = [
-  {
-    id: "1",
-    position: { lat: 36.3006, lng: 137.8729 },
-    locationName: "穂高駅前",
-    contentTitle: "安曇野わさび農場 秋の収穫祭",
-    audioDurationSec: 95,
-  },
-  {
-    id: "2",
-    position: { lat: 36.3234, lng: 137.8821 },
-    locationName: "大王わさび農場",
-    contentTitle: "道の駅 ほりがねの里",
-    audioDurationSec: 60,
-  },
-]
+function PlayPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const programId = searchParams.get('programId')
 
-// スタブ関数
-async function getCurrentPlaybackState(): Promise<PlaybackState> {
-  // TODO: API接続はClaude Codeが実装
-  return {
-    currentContent: "安曇野わさび農場 秋の収穫祭",
-    queue: ["穂高神社 例大祭のお知らせ", "道の駅 ほりがねの里"],
-    gpsStatus: "active",
-    serverStatus: "connected",
-    externalAudio: false,
-  }
-}
-
-// GPS ステータス → StatusIndicator の status に変換
-function gpsStatusToIndicator(status: GpsStatus): "ok" | "warning" | "error" {
-  switch (status) {
-    case "active":
-      return "ok"
-    case "low-accuracy":
-      return "warning"
-    case "inactive":
-      return "error"
-    default:
-      return "error"
-  }
-}
-
-function gpsStatusLabel(status: GpsStatus): string {
-  switch (status) {
-    case "active":
-      return "受信中"
-    case "low-accuracy":
-      return "精度低下"
-    case "inactive":
-      return "未受信"
-    default:
-      return "不明"
-  }
-}
-
-export default function PlayPage() {
-  const [playbackState, setPlaybackState] = useState<PlaybackState>({
-    currentContent: null,
-    queue: [],
-    gpsStatus: "active",
-    serverStatus: "connected",
-    externalAudio: false,
-  })
-
+  // UI state
+  const [program, setProgram] = useState<ClientProgram | null>(null)
   const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
-
-  const [offlineBannerDismissed, setOfflineBannerDismissed] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('inactive')
+  const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected')
+  const [playingItemId, setPlayingItemId] = useState<string | null>(null)
+  const [playedItemIds, setPlayedItemIds] = useState<Set<string>>(new Set())
+  const [queueCount, setQueueCount] = useState(0)
+  const [externalAudio, setExternalAudio] = useState(false)
+  const [showEndTripDialog, setShowEndTripDialog] = useState(false)
   const [showPlaybackError, setShowPlaybackError] = useState(false)
   const [errorContentTitle, setErrorContentTitle] = useState<string | undefined>()
-  const [showEndTripDialog, setShowEndTripDialog] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [initError, setInitError] = useState<string | null>(null)
 
-  // 初期データ取得
-  useEffect(() => {
-    const loadState = async () => {
-      const state = await getCurrentPlaybackState()
-      setPlaybackState(state)
+  // Refs（GPSコールバックや音声コールバックで最新値を参照するため）
+  const deviceTokenRef = useRef<string | null>(null)
+  const tripIdRef = useRef<string | null>(null)
+  // 自己再帰コールを stale closure なしで行うための ref
+  const playNextFromQueueRef = useRef<() => Promise<void>>(async () => {})
+  const programRef = useRef<ClientProgram | null>(null)
+  const isPlayingRef = useRef(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const currentObjectUrlRef = useRef<string | null>(null)
+  const currentPlayingItemRef = useRef<ClientProgramItem | null>(null)
+  const audioQueueRef = useRef<ClientProgramItem[]>([])
+  const playedItemIdsRef = useRef<Set<string>>(new Set())
+  const externalAudioRef = useRef(false)
+  const positionHistoryRef = useRef<Array<{ lat: number; lng: number }>>([])
+  const broadcastChannelRef = useRef<RealtimeChannel | null>(null)
+  const gpsWatchIdRef = useRef<number | null>(null)
+  const locationLogIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const recordPlaybackEvent = useCallback(
+    async (
+      itemId: string,
+      status: 'played' | 'failed' | 'cancelled',
+      durationSeconds?: number,
+    ) => {
+      if (!tripIdRef.current || !deviceTokenRef.current) return
+      try {
+        await fetch('/api/client/playback-event', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Device-Token': deviceTokenRef.current,
+          },
+          body: JSON.stringify({
+            tripId: tripIdRef.current,
+            radioProgramItemId: itemId,
+            status,
+            durationSeconds,
+          }),
+        })
+      } catch (err) {
+        console.error('再生イベント記録エラー:', err)
+      }
+    },
+    [],
+  )
+
+  // 次5本を Cache API にバイナリキャッシュ（バックグラウンド）
+  const precacheAudio = useCallback(async () => {
+    if (!programRef.current || !deviceTokenRef.current) return
+    if (!('caches' in window)) return
+
+    const toPrecache = programRef.current.items
+      .filter((item) => item.audioFileId && !playedItemIdsRef.current.has(item.id))
+      .slice(0, 5)
+
+    const cache = await caches.open(AUDIO_CACHE)
+    for (const item of toPrecache) {
+      if (!item.audioFileId) continue
+      const cacheKey = new Request(`/audio-cache/${item.audioFileId}`)
+      if (await cache.match(cacheKey)) continue
+
+      try {
+        const res = await fetch(`/api/client/audio/${item.audioFileId}`, {
+          headers: { 'X-Device-Token': deviceTokenRef.current! },
+        })
+        if (!res.ok) continue
+        const { signedUrl } = (await res.json()) as { signedUrl: string }
+
+        const audioRes = await fetch(signedUrl)
+        if (!audioRes.ok) continue
+        await cache.put(cacheKey, audioRes)
+      } catch (err) {
+        console.error('音声プリキャッシュエラー:', err)
+      }
     }
-    loadState()
   }, [])
 
-  // GPS 監視
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setPlaybackState((prev: PlaybackState) => ({ ...prev, gpsStatus: "inactive" }))
+  const playNextFromQueue = useCallback(async () => {
+    if (isPlayingRef.current) return
+    if (audioQueueRef.current.length === 0) return
+    if (externalAudioRef.current) return
+
+    const item = audioQueueRef.current[0]
+    if (!item.audioFileId) {
+      audioQueueRef.current = audioQueueRef.current.slice(1)
+      setQueueCount(audioQueueRef.current.length)
       return
     }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        setCurrentPosition({ lat: position.coords.latitude, lng: position.coords.longitude })
-        setPlaybackState((prev: PlaybackState) => ({
-          ...prev,
-          gpsStatus: position.coords.accuracy > 100 ? "low-accuracy" : "active",
-        }))
-      },
-      () => {
-        setPlaybackState((prev: PlaybackState) => ({ ...prev, gpsStatus: "inactive" }))
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000,
+    isPlayingRef.current = true
+    currentPlayingItemRef.current = item
+    setPlayingItemId(item.id)
+
+    try {
+      const cache = 'caches' in window ? await caches.open(AUDIO_CACHE) : null
+      const cacheKey = new Request(`/audio-cache/${item.audioFileId}`)
+
+      let objectUrl: string
+      const cached = cache ? await cache.match(cacheKey) : null
+      if (cached) {
+        objectUrl = URL.createObjectURL(await cached.blob())
+      } else {
+        const res = await fetch(`/api/client/audio/${item.audioFileId}`, {
+          headers: { 'X-Device-Token': deviceTokenRef.current! },
+        })
+        const { signedUrl } = (await res.json()) as { signedUrl: string }
+        const audioRes = await fetch(signedUrl)
+        objectUrl = URL.createObjectURL(await audioRes.blob())
       }
-    )
 
-    return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
+      currentObjectUrlRef.current = objectUrl
+      const audio = new Audio(objectUrl)
+      audioRef.current = audio
 
-  // サーバー接続状態の監視（スタブ）
+      audio.addEventListener(
+        'ended',
+        () => {
+          URL.revokeObjectURL(objectUrl)
+          currentObjectUrlRef.current = null
+          cache?.delete(cacheKey)
+
+          const duration = audio.duration
+          recordPlaybackEvent(
+            item.id,
+            'played',
+            isFinite(duration) ? Math.floor(duration) : undefined,
+          )
+
+          playedItemIdsRef.current = new Set([...playedItemIdsRef.current, item.id])
+          setPlayedItemIds(new Set(playedItemIdsRef.current))
+
+          audioQueueRef.current = audioQueueRef.current.slice(1)
+          setQueueCount(audioQueueRef.current.length)
+
+          isPlayingRef.current = false
+          currentPlayingItemRef.current = null
+          setPlayingItemId(null)
+
+          playNextFromQueueRef.current()
+        },
+        { once: true },
+      )
+
+      audio.addEventListener(
+        'error',
+        () => {
+          URL.revokeObjectURL(objectUrl)
+          currentObjectUrlRef.current = null
+
+          recordPlaybackEvent(item.id, 'failed')
+
+          audioQueueRef.current = audioQueueRef.current.slice(1)
+          setQueueCount(audioQueueRef.current.length)
+
+          isPlayingRef.current = false
+          currentPlayingItemRef.current = null
+          setPlayingItemId(null)
+          setErrorContentTitle(item.displayName ?? item.contentTitle)
+          setShowPlaybackError(true)
+
+          playNextFromQueueRef.current()
+        },
+        { once: true },
+      )
+
+      await audio.play()
+    } catch (err) {
+      console.error('音声再生エラー:', err)
+      recordPlaybackEvent(item.id, 'failed')
+
+      audioQueueRef.current = audioQueueRef.current.slice(1)
+      setQueueCount(audioQueueRef.current.length)
+      isPlayingRef.current = false
+      currentPlayingItemRef.current = null
+      setPlayingItemId(null)
+      setErrorContentTitle(item.displayName ?? item.contentTitle)
+      setShowPlaybackError(true)
+    }
+  }, [recordPlaybackEvent])
+
+  // ref を常に最新の関数に同期
   useEffect(() => {
-    // TODO: WebSocket / MQTT接続の実装はClaude Codeが担当
+    playNextFromQueueRef.current = playNextFromQueue
+  }, [playNextFromQueue])
+
+  // GPS更新ハンドラ
+  const handlePositionUpdate = useCallback(
+    (position: GeolocationPosition) => {
+      const pos = { lat: position.coords.latitude, lng: position.coords.longitude }
+
+      positionHistoryRef.current = [...positionHistoryRef.current, pos].slice(-3)
+      const smoothed = smoothGps(positionHistoryRef.current)
+
+      setCurrentPosition(smoothed)
+      setGpsStatus(position.coords.accuracy > 100 ? 'low-accuracy' : 'active')
+
+      if (broadcastChannelRef.current) {
+        sendLocation(broadcastChannelRef.current, smoothed.lat, smoothed.lng).catch(() => {})
+      }
+
+      if (!programRef.current) return
+      for (const item of programRef.current.items) {
+        if (!item.audioFileId) continue
+        if (playedItemIdsRef.current.has(item.id)) continue
+        if (audioQueueRef.current.some((q) => q.id === item.id)) continue
+
+        const dist = haversineDistance(smoothed, { lat: item.lat, lng: item.lng })
+        if (dist <= TRIGGER_RADIUS_M) {
+          audioQueueRef.current = [...audioQueueRef.current, item]
+          setQueueCount(audioQueueRef.current.length)
+          if (!isPlayingRef.current) playNextFromQueue()
+        }
+      }
+    },
+    [playNextFromQueue],
+  )
+
+  // 初期化（認証・番組取得・trip開始・Realtime接続）
+  useEffect(() => {
+    if (!programId) {
+      router.replace('/client')
+      return
+    }
+    const token = localStorage.getItem('deviceToken')
+    if (!token) {
+      router.replace('/client/setup')
+      return
+    }
+    deviceTokenRef.current = token
+
+    const init = async () => {
+      try {
+        // 番組データ取得
+        const progRes = await fetch('/api/client/program', {
+          headers: { 'X-Device-Token': token },
+        })
+        if (progRes.status === 401) { router.replace('/client/setup'); return }
+        if (!progRes.ok) throw new Error('番組データの取得に失敗しました')
+
+        const progs: ClientProgram[] = await progRes.json()
+        const found = progs.find((p) => p.id === programId)
+        if (!found) { router.replace('/client'); return }
+
+        programRef.current = found
+        setProgram(found)
+        setServerStatus('connected')
+
+        // 運行開始
+        const tripRes = await fetch('/api/client/trip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Device-Token': token },
+          body: JSON.stringify({ radioProgramId: programId }),
+        })
+        if (!tripRes.ok) throw new Error('運行開始に失敗しました')
+        const { tripId } = (await tripRes.json()) as { tripId: string }
+        tripIdRef.current = tripId
+
+        // Realtime broadcast チャンネル接続（bus_id 取得）
+        const authRes = await fetch('/api/client/auth', {
+          headers: { 'X-Device-Token': token },
+        })
+        if (authRes.ok) {
+          const { busId } = (await authRes.json()) as { busId: string }
+          const channel = createLocationChannel(busId)
+          await channel.subscribe()
+          broadcastChannelRef.current = channel
+        }
+
+        setIsLoading(false)
+        // バックグラウンドで音声をプリキャッシュ
+        precacheAudio()
+      } catch (err) {
+        console.error('初期化エラー:', err)
+        setInitError(err instanceof Error ? err.message : '初期化に失敗しました')
+        setIsLoading(false)
+      }
+    }
+
+    init()
+  }, [programId, router, precacheAudio])
+
+  // GPS監視（初期値はすでに 'inactive'）
+  useEffect(() => {
+    if (isLoading || initError) return
+    if (!navigator.geolocation) return
+
+    const watchId = navigator.geolocation.watchPosition(
+      handlePositionUpdate,
+      () => setGpsStatus('inactive'),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 5_000 },
+    )
+    gpsWatchIdRef.current = watchId
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [isLoading, initError, handlePositionUpdate])
+
+  // 位置ログ（30秒間引き）
+  useEffect(() => {
+    if (isLoading || initError) return
+
     const interval = setInterval(() => {
-      // スタブ: 接続状態のシミュレーション
-    }, 5000)
+      if (!tripIdRef.current || !deviceTokenRef.current) return
+      if (positionHistoryRef.current.length === 0) return
+      const pos = smoothGps(positionHistoryRef.current)
+
+      fetch('/api/client/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Device-Token': deviceTokenRef.current },
+        body: JSON.stringify({ tripId: tripIdRef.current, lat: pos.lat, lng: pos.lng }),
+      }).catch((err) => console.error('位置ログエラー:', err))
+    }, LOCATION_LOG_INTERVAL_MS)
+
+    locationLogIntervalRef.current = interval
     return () => clearInterval(interval)
+  }, [isLoading, initError])
+
+  // アンマウント時クリーンアップ
+  useEffect(() => {
+    return () => {
+      if (gpsWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current)
+      }
+      if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
+      if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+      if (currentObjectUrlRef.current) {
+        URL.revokeObjectURL(currentObjectUrlRef.current)
+        currentObjectUrlRef.current = null
+      }
+    }
   }, [])
 
-  const handleExternalAudioToggle = useCallback((checked: boolean) => {
-    setPlaybackState((prev: PlaybackState) => ({ ...prev, externalAudio: checked }))
-  }, [])
+  const handleExternalAudioToggle = useCallback(
+    (checked: boolean) => {
+      externalAudioRef.current = checked
+      setExternalAudio(checked)
 
-  const handlePlaybackErrorSkip = useCallback(() => {
-    setShowPlaybackError(false)
-    // TODO: 次のコンテンツへスキップ
-  }, [])
+      if (checked && isPlayingRef.current && currentPlayingItemRef.current) {
+        const item = currentPlayingItemRef.current
+        if (currentObjectUrlRef.current) {
+          URL.revokeObjectURL(currentObjectUrlRef.current)
+          currentObjectUrlRef.current = null
+        }
+        audioRef.current?.pause()
+        audioRef.current = null
+        recordPlaybackEvent(item.id, 'cancelled')
+        isPlayingRef.current = false
+        currentPlayingItemRef.current = null
+        setPlayingItemId(null)
+      }
+    },
+    [recordPlaybackEvent],
+  )
 
-  const handlePlaybackErrorRetry = useCallback(() => {
-    setShowPlaybackError(false)
-    // TODO: 再生を再試行
-  }, [])
-
-  const handleEndTrip = useCallback(() => {
+  const handleEndTrip = useCallback(async () => {
     setShowEndTripDialog(false)
-    // TODO: 運行終了処理
-    window.location.href = "/client"
-  }, [])
 
-  const showOfflineBanner =
-    playbackState.serverStatus === "disconnected" && !offlineBannerDismissed
+    // 再生中なら cancelled 記録
+    if (isPlayingRef.current && currentPlayingItemRef.current) {
+      recordPlaybackEvent(currentPlayingItemRef.current.id, 'cancelled')
+    }
+    if (currentObjectUrlRef.current) {
+      URL.revokeObjectURL(currentObjectUrlRef.current)
+      currentObjectUrlRef.current = null
+    }
+    audioRef.current?.pause()
+    audioRef.current = null
+
+    // 運行終了
+    if (tripIdRef.current && deviceTokenRef.current) {
+      await fetch('/api/client/trip', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Device-Token': deviceTokenRef.current },
+        body: JSON.stringify({ tripId: tripIdRef.current }),
+      }).catch((err) => console.error('運行終了エラー:', err))
+    }
+
+    if (gpsWatchIdRef.current !== null) navigator.geolocation.clearWatch(gpsWatchIdRef.current)
+    if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
+    if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
+
+    router.replace('/client')
+  }, [recordPlaybackEvent, router])
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background dark">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
+  }
+
+  if (initError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background p-6 dark">
+        <p className="text-lg text-destructive">{initError}</p>
+        <Button onClick={() => router.replace('/client')}>番組選択に戻る</Button>
+      </div>
+    )
+  }
+
+  const routePoints = program?.items.map((item) => ({ lat: item.lat, lng: item.lng })) ?? []
+  const mapItems = (program?.items ?? []).map((item) => ({
+    id: item.id,
+    position: { lat: item.lat, lng: item.lng },
+    locationName: item.displayName ?? '地点',
+    contentTitle: item.contentTitle,
+    audioDurationSec: item.durationSeconds ?? 0,
+  }))
+
+  const playingItem = program?.items.find((i) => i.id === playingItemId)
+  const playingLabel = playingItem
+    ? (playingItem.displayName ?? playingItem.contentTitle)
+    : '---'
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background dark">
-      {/* オフラインバナー */}
-      <OfflineBanner
-        visible={showOfflineBanner}
-        onDismiss={() => setOfflineBannerDismissed(true)}
-      />
+      <OfflineBanner visible={serverStatus === 'disconnected'} onDismiss={() => {}} />
 
-      {/* 再生エラーダイアログ */}
       <PlaybackErrorDialog
         open={showPlaybackError}
         contentTitle={errorContentTitle}
-        onSkip={handlePlaybackErrorSkip}
-        onRetry={handlePlaybackErrorRetry}
+        onSkip={() => setShowPlaybackError(false)}
+        onRetry={() => setShowPlaybackError(false)}
       />
 
-      {/* 運行終了ダイアログ */}
       <EndTripDialog
         open={showEndTripDialog}
         onOpenChange={setShowEndTripDialog}
         onConfirm={handleEndTrip}
       />
 
-      {/* 地図エリア */}
       <div className="flex-1">
         <PlayMap
-          routePoints={MOCK_ROUTE_POINTS}
-          items={MOCK_ITEMS}
+          routePoints={routePoints}
+          items={mapItems}
           currentPosition={currentPosition}
+          playingItemId={playingItemId ?? undefined}
+          playedItemIds={[...playedItemIds]}
         />
       </div>
 
-      {/* ステータスバー */}
       <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-4 py-3">
-        {/* 左側: StatusIndicator */}
         <div className="flex items-center gap-6">
           <StatusIndicator
-            status={gpsStatusToIndicator(playbackState.gpsStatus)}
+            status={gpsStatus === 'active' ? 'ok' : gpsStatus === 'low-accuracy' ? 'warning' : 'error'}
             label="GPS"
-            sublabel={gpsStatusLabel(playbackState.gpsStatus)}
+            sublabel={
+              gpsStatus === 'active' ? '受信中' : gpsStatus === 'low-accuracy' ? '精度低下' : '未受信'
+            }
             size="lg"
           />
           <StatusIndicator
-            status={playbackState.serverStatus === "connected" ? "ok" : "error"}
+            status={serverStatus === 'connected' ? 'ok' : 'error'}
             label="サーバー"
-            sublabel={playbackState.serverStatus === "connected" ? "接続中" : "切断"}
+            sublabel={serverStatus === 'connected' ? '接続中' : '切断'}
             size="lg"
           />
         </div>
 
-        {/* 中央: 再生情報 */}
         <div className="flex flex-1 items-center justify-center gap-6">
           <div className="flex items-center gap-3">
             <Radio className="h-5 w-5 text-brand-orange" />
             <div className="text-lg">
               <span className="text-muted-foreground">再生中: </span>
-              <span className="font-medium text-foreground">
-                {playbackState.currentContent ?? "---"}
-              </span>
+              <span className="font-medium text-foreground">{playingLabel}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Volume2 className="h-5 w-5 text-muted-foreground" />
-            <span className="text-lg text-muted-foreground">
-              待機中: {playbackState.queue.length}件
-            </span>
+            <span className="text-lg text-muted-foreground">待機中: {queueCount}件</span>
           </div>
         </div>
 
-        {/* 右側: 外部音声トグルと運行終了 */}
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
             <span className="text-lg text-muted-foreground">外部音声</span>
             <Switch
-              checked={playbackState.externalAudio}
+              checked={externalAudio}
               onCheckedChange={handleExternalAudioToggle}
               className="data-[state=checked]:bg-brand-orange"
             />
             <span className="min-w-[40px] text-lg font-medium text-foreground">
-              {playbackState.externalAudio ? "ON" : "OFF"}
+              {externalAudio ? 'ON' : 'OFF'}
             </span>
           </div>
           <Button
@@ -258,5 +542,19 @@ export default function PlayPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PlayPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-background dark">
+          <Spinner className="h-8 w-8" />
+        </div>
+      }
+    >
+      <PlayPageContent />
+    </Suspense>
   )
 }

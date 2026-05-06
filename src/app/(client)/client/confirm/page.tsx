@@ -16,35 +16,27 @@ import {
 } from '@/components/ui/table'
 import { Spinner } from '@/components/ui/spinner'
 import { ArrowLeft, Play, MapPin, Wifi, Navigation } from 'lucide-react'
-import { MOCK_PROGRAMS } from '@/lib/stubs'
-import type { GpsStatus, ServerStatus, Program } from '@/lib/types'
+import type { ClientProgram } from '@/lib/schemas/client'
+import type { GpsStatus, ServerStatus } from '@/lib/types'
 
-function StatusIndicator({
+function StatusCard({
+  type,
   status,
   label,
-  type,
 }: {
+  type: 'gps' | 'server'
   status: 'ok' | 'warning' | 'error'
   label: string
-  type: 'gps' | 'server'
 }) {
-  const colorClass = {
-    ok: 'bg-brand-green',
-    warning: 'bg-brand-warning',
-    error: 'bg-brand-red',
-  }[status]
-
+  const colorClass = { ok: 'bg-brand-green', warning: 'bg-brand-warning', error: 'bg-brand-red' }[status]
   const Icon = type === 'gps' ? Navigation : Wifi
-
   return (
     <div className="flex items-center gap-3 rounded-lg border bg-card p-4">
       <div className={`flex h-10 w-10 items-center justify-center rounded-full ${colorClass}`}>
         <Icon className="h-5 w-5 text-white" />
       </div>
       <div>
-        <p className="text-sm text-muted-foreground">
-          {type === 'gps' ? 'GPS' : 'サーバー通信'}
-        </p>
+        <p className="text-sm text-muted-foreground">{type === 'gps' ? 'GPS' : 'サーバー通信'}</p>
         <p className="text-lg font-medium text-foreground">{label}</p>
       </div>
     </div>
@@ -56,59 +48,77 @@ function ConfirmPageContent() {
   const searchParams = useSearchParams()
   const programId = searchParams.get('programId')
 
-  const [program, setProgram] = useState<Program | null>(null)
+  const [program, setProgram] = useState<ClientProgram | null>(null)
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('inactive')
   const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected')
+  const [isLoading, setIsLoading] = useState(true)
 
+  // 番組データ取得 + サーバー接続確認
   useEffect(() => {
-    if (programId) {
-      const found = MOCK_PROGRAMS.find((p) => p.id === programId)
-      setProgram(found ?? null)
+    if (!programId) {
+      router.replace('/client')
+      return
     }
-  }, [programId])
 
-  // GPS状態のシミュレーション
+    const token = localStorage.getItem('deviceToken')
+    if (!token) {
+      router.replace('/client/setup')
+      return
+    }
+
+    fetch('/api/client/program', { headers: { 'X-Device-Token': token } })
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.replace('/client/setup')
+          return
+        }
+        if (!res.ok) throw new Error()
+        const data: ClientProgram[] = await res.json()
+        const found = data.find((p) => p.id === programId)
+        if (!found) {
+          router.replace('/client')
+          return
+        }
+        setProgram(found)
+        setServerStatus('connected')
+      })
+      .catch(() => setServerStatus('disconnected'))
+      .finally(() => setIsLoading(false))
+  }, [programId, router])
+
+  // GPS 状態を実際に確認（初期値はすでに 'inactive'）
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setGpsStatus('active')
-    }, 1500)
-    return () => clearTimeout(timer)
+    if (!navigator.geolocation) return
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => setGpsStatus(pos.coords.accuracy > 100 ? 'low-accuracy' : 'active'),
+      () => setGpsStatus('inactive'),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 5_000 },
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // サーバー接続状態のシミュレーション
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setServerStatus('connected')
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [])
-
-  const gpsStatusInfo = {
+  const gpsInfo = {
     active: { status: 'ok' as const, label: '受信中' },
     inactive: { status: 'error' as const, label: '未受信' },
     'low-accuracy': { status: 'warning' as const, label: '精度低下' },
   }[gpsStatus]
 
-  const serverStatusInfo = {
+  const serverInfo = {
     connected: { status: 'ok' as const, label: '接続中' },
     disconnected: { status: 'error' as const, label: '切断' },
   }[serverStatus]
 
   const canStart = gpsStatus === 'active' && serverStatus === 'connected'
 
-  const handleStart = () => {
-    if (canStart && programId) {
-      router.push(`/client/play?programId=${programId}`)
-    }
-  }
-
-  if (!program) {
+  if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center dark:bg-background">
         <Spinner className="h-8 w-8" />
       </div>
     )
   }
+
+  if (!program) return null
 
   return (
     <div className="flex min-h-screen flex-col p-6 dark:bg-background">
@@ -128,21 +138,11 @@ function ConfirmPageContent() {
       </header>
 
       <main className="flex-1 space-y-6">
-        {/* ステータスインジケーター */}
         <div className="grid gap-4 md:grid-cols-2">
-          <StatusIndicator
-            type="gps"
-            status={gpsStatusInfo.status}
-            label={gpsStatusInfo.label}
-          />
-          <StatusIndicator
-            type="server"
-            status={serverStatusInfo.status}
-            label={serverStatusInfo.label}
-          />
+          <StatusCard type="gps" status={gpsInfo.status} label={gpsInfo.label} />
+          <StatusCard type="server" status={serverInfo.status} label={serverInfo.label} />
         </div>
 
-        {/* 警告メッセージ */}
         {!canStart && (
           <div className="rounded-lg border border-brand-warning bg-brand-warning/10 p-4">
             <p className="text-lg font-medium text-brand-warning">
@@ -151,7 +151,6 @@ function ConfirmPageContent() {
           </div>
         )}
 
-        {/* コンテンツ一覧 */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
@@ -170,16 +169,24 @@ function ConfirmPageContent() {
                   <TableRow>
                     <TableHead className="text-base">位置名称</TableHead>
                     <TableHead className="text-base">コンテンツ</TableHead>
+                    <TableHead className="text-base">音声</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {program.items.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="text-lg font-medium">
-                        {item.locationName}
+                        {item.displayName ?? '未設定'}
                       </TableCell>
                       <TableCell className="text-lg text-muted-foreground">
                         {item.contentTitle}
+                      </TableCell>
+                      <TableCell>
+                        {item.audioFileId ? (
+                          <Badge className="bg-brand-green text-white">あり</Badge>
+                        ) : (
+                          <Badge variant="secondary">なし</Badge>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -190,13 +197,12 @@ function ConfirmPageContent() {
         </Card>
       </main>
 
-      {/* 開始ボタン */}
-      <footer className="mt-6 pt-6 border-t">
+      <footer className="mt-6 border-t pt-6">
         <Button
           size="lg"
-          className="w-full h-16 text-xl"
+          className="h-16 w-full text-xl"
           disabled={!canStart}
-          onClick={handleStart}
+          onClick={() => router.push(`/client/play?programId=${programId}`)}
         >
           <Play className="mr-3 h-6 w-6" />
           再生開始
@@ -208,11 +214,13 @@ function ConfirmPageContent() {
 
 export default function ClientConfirmPage() {
   return (
-    <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center dark:bg-background">
-        <Spinner className="h-8 w-8" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center dark:bg-background">
+          <Spinner className="h-8 w-8" />
+        </div>
+      }
+    >
       <ConfirmPageContent />
     </Suspense>
   )
