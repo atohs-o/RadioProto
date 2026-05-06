@@ -43,14 +43,14 @@ export function ProgramsTable({ programs: initialPrograms }: ProgramsTableProps)
 
   return (
     <div className="rounded-lg border bg-card">
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[300px]">番組名</TableHead>
-            <TableHead className="w-[120px] text-center">コンテンツ数</TableHead>
-            <TableHead className="w-[100px] text-center">有効/無効</TableHead>
-            <TableHead className="w-[180px]">更新日</TableHead>
-            <TableHead className="w-[80px] text-center">操作</TableHead>
+            <TableHead>番組名</TableHead>
+            <TableHead className="w-24 text-center">コンテンツ数</TableHead>
+            <TableHead className="w-24 text-center">有効/無効</TableHead>
+            <TableHead className="w-36">更新日</TableHead>
+            <TableHead className="w-20 text-center sticky right-0 bg-card">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -66,7 +66,9 @@ export function ProgramsTable({ programs: initialPrograms }: ProgramsTableProps)
           ) : (
             programs.map((program) => (
               <TableRow key={program.id}>
-                <TableCell className="font-medium">{program.name}</TableCell>
+                <TableCell className="overflow-hidden font-medium">
+                  <span className="truncate block">{program.name}</span>
+                </TableCell>
                 <TableCell className="text-center">
                   <Badge variant="secondary">{program.items.length}件</Badge>
                 </TableCell>
@@ -82,7 +84,7 @@ export function ProgramsTable({ programs: initialPrograms }: ProgramsTableProps)
                 <TableCell className="text-muted-foreground">
                   {formatDate(program.updatedAt)}
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-center sticky right-0 bg-card">
                   <Button variant="ghost" size="icon" asChild>
                     <Link href={`/programs/${program.id}`}>
                       <Pencil className="h-4 w-4" />

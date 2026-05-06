@@ -154,13 +154,13 @@ export default function LogsPage() {
               </Empty>
             ) : (
               <div className="max-h-96 overflow-auto md:max-h-[600px]">
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead>バス</TableHead>
-                      <TableHead>運行開始</TableHead>
-                      <TableHead>運行終了</TableHead>
-                      <TableHead className="text-right">再生数</TableHead>
+                      <TableHead className="w-28">運行開始</TableHead>
+                      <TableHead className="w-28">運行終了</TableHead>
+                      <TableHead className="w-14 text-right">再生数</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -173,7 +173,9 @@ export default function LogsPage() {
                         )}
                         onClick={() => setSelectedTripId(trip.id)}
                       >
-                        <TableCell className="font-medium">{trip.busCode}</TableCell>
+                        <TableCell className="overflow-hidden font-medium">
+                          <span className="truncate block">{trip.busCode}</span>
+                        </TableCell>
                         <TableCell>{formatDateTime(trip.startedAt)}</TableCell>
                         <TableCell>
                           {trip.endedAt ? formatDateTime(trip.endedAt) : '-'}
@@ -224,19 +226,19 @@ export default function LogsPage() {
               </Empty>
             ) : (
               <div className="max-h-96 overflow-auto md:max-h-[600px]">
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead>コンテンツタイトル</TableHead>
-                      <TableHead>ステータス</TableHead>
-                      <TableHead>再生時刻</TableHead>
+                      <TableHead className="w-24">ステータス</TableHead>
+                      <TableHead className="w-20">再生時刻</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {playEvents?.map((event) => (
                       <TableRow key={event.id}>
-                        <TableCell className="font-medium">
-                          {event.contentTitle}
+                        <TableCell className="overflow-hidden font-medium">
+                          <span className="truncate block">{event.contentTitle}</span>
                         </TableCell>
                         <TableCell>
                           <Badge variant={getStatusBadgeVariant(event.status)}>

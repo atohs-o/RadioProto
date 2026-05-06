@@ -200,31 +200,33 @@ export function PollingSitesPageClient({ sites: initialSites }: Props) {
       )}
 
       <div className="rounded-md border">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[200px]">サイト名</TableHead>
+              <TableHead className="w-36">サイト名</TableHead>
               <TableHead>URL</TableHead>
-              <TableHead className="w-[100px] text-center">有効</TableHead>
-              <TableHead className="w-[180px]">最終取得日時</TableHead>
-              <TableHead className="w-[100px] text-center">
+              <TableHead className="w-16 text-center">有効</TableHead>
+              <TableHead className="w-36">最終取得日時</TableHead>
+              <TableHead className="w-24 text-center">
                 ステータス
               </TableHead>
-              <TableHead className="w-[80px]" />
+              <TableHead className="w-12 sticky right-0 bg-background" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {sites.map((site) => (
               <TableRow key={site.id}>
-                <TableCell className="font-medium">{site.name}</TableCell>
-                <TableCell>
+                <TableCell className="overflow-hidden font-medium">
+                  <span className="truncate block">{site.name}</span>
+                </TableCell>
+                <TableCell className="overflow-hidden">
                   <a
                     href={site.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-brand-blue hover:underline"
+                    className="flex items-center gap-1 text-brand-blue hover:underline min-w-0"
                   >
-                    <span className="max-w-[300px] truncate">{site.url}</span>
+                    <span className="truncate">{site.url}</span>
                     <ExternalLink className="h-3 w-3 flex-shrink-0" />
                   </a>
                 </TableCell>
@@ -240,7 +242,7 @@ export function PollingSitesPageClient({ sites: initialSites }: Props) {
                 <TableCell className="text-center">
                   {getStatusBadge(site.lastStatus)}
                 </TableCell>
-                <TableCell>
+                <TableCell className="sticky right-0 bg-background">
                   <Button
                     variant="ghost"
                     size="icon"

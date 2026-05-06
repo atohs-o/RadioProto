@@ -217,25 +217,25 @@ function ContentsTable({
 }) {
   return (
     <div className="rounded-lg border">
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead>タイトル</TableHead>
-            <TableHead className="w-[100px]">ソース</TableHead>
-            <TableHead className="w-[100px]">音声</TableHead>
-            <TableHead className="w-[100px]">ラジオ登録</TableHead>
-            <TableHead className="w-[100px]">更新日</TableHead>
-            <TableHead className="w-[100px]">操作</TableHead>
+            <TableHead className="w-24">ソース</TableHead>
+            <TableHead className="w-24">音声</TableHead>
+            <TableHead className="w-24">ラジオ登録</TableHead>
+            <TableHead className="w-28">更新日</TableHead>
+            <TableHead className="w-20 sticky right-0 bg-background">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {contents.map((content) => (
             <TableRow key={content.id}>
-              <TableCell>
-                <div className="flex flex-col">
-                  <span className="font-medium">{content.title}</span>
+              <TableCell className="overflow-hidden">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium truncate">{content.title}</span>
                   {content.summary && (
-                    <span className="text-sm text-muted-foreground line-clamp-1">
+                    <span className="text-sm text-muted-foreground truncate">
                       {content.summary}
                     </span>
                   )}
@@ -261,7 +261,7 @@ function ContentsTable({
               <TableCell className="text-sm text-muted-foreground">
                 {content.updatedAt}
               </TableCell>
-              <TableCell>
+              <TableCell className="sticky right-0 bg-background">
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" asChild className="size-8">
                     <Link href={`/contents/${content.id}`}>

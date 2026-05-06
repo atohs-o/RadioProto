@@ -98,22 +98,24 @@ export default function BusesPage() {
         </div>
       ) : (
         <div className="rounded-md border">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>バスコード</TableHead>
+                <TableHead className="w-28">バスコード</TableHead>
                 <TableHead>バス名</TableHead>
-                <TableHead>デバイストークン</TableHead>
-                <TableHead>最終接続日時</TableHead>
-                <TableHead>ステータス</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead className="w-24">デバイストークン</TableHead>
+                <TableHead className="w-36">最終接続日時</TableHead>
+                <TableHead className="w-20">ステータス</TableHead>
+                <TableHead className="w-56 text-right sticky right-0 bg-background">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {buses?.map((bus) => (
                 <TableRow key={bus.id}>
                   <TableCell className="font-medium">{bus.busCode}</TableCell>
-                  <TableCell>{bus.busName}</TableCell>
+                  <TableCell className="overflow-hidden">
+                    <span className="truncate block">{bus.busName}</span>
+                  </TableCell>
                   <TableCell className="font-mono text-sm">
                     {maskToken(bus.deviceToken)}
                   </TableCell>
@@ -123,7 +125,7 @@ export default function BusesPage() {
                       {bus.enabled ? '有効' : '無効'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right sticky right-0 bg-background">
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"
