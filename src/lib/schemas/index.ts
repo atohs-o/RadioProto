@@ -24,6 +24,7 @@ export const programSchema = z.object({
     id: z.string().uuid(),
     position: z.object({ lat: z.number(), lng: z.number() }),
     locationName: z.string(),
+    contentId: z.string().uuid(),
     contentTitle: z.string(),
     audioDurationSec: z.number(),
   })),

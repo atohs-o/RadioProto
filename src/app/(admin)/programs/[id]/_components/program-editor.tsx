@@ -25,23 +25,59 @@ import {
 import { ArrowLeft, Save, Upload, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
+import Map from '@/components/map/map'
+import type { MapMarker } from '@/components/map/map'
+import { ContentSelectDialog } from './content-select-dialog'
+import { saveProgramAction } from '../../actions'
+import { importRouteCSV } from '@/lib/csv'
+
+interface GeneratedContent {
+  id: string
+  title: string
+  audioDurationSec?: number
+}
 
 interface ProgramEditorProps {
   program: Program
   isNew?: boolean
+  generatedContents: GeneratedContent[]
 }
 
-export function ProgramEditor({ program: initialProgram, isNew = false }: ProgramEditorProps) {
+export function ProgramEditor({
+  program: initialProgram,
+  isNew = false,
+  generatedContents,
+}: ProgramEditorProps) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [program, setProgram] = useState(initialProgram)
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingPosition, setPendingPosition] = useState<{ lat: number; lng: number } | null>(null)
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
+
+  const mapCenter =
+    program.routePoints[0] ??
+    program.items[0]?.position ??
+    { lat: 36.3006, lng: 137.8729 }
+
+  const markers: MapMarker[] = program.items.map((item) => ({
+    id: item.id,
+    position: item.position,
+    label: item.locationName,
+    color: 'blue',
+  }))
 
   const handleSave = async () => {
     setIsSaving(true)
-    // TODO: API呼び出しはClaude Codeが実装
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    setIsSaving(false)
+    setSaveError(null)
+    const result = await saveProgramAction(program, isNew)
+    if (result.error) {
+      setSaveError(result.error)
+      setIsSaving(false)
+      return
+    }
     router.push('/programs')
   }
 
@@ -53,20 +89,15 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
     const file = e.target.files?.[0]
     if (!file) return
 
-    // TODO: CSVインポート処理はClaude Codeが実装
-    // スタブとして固定データを設定
-    setProgram((prev) => ({
-      ...prev,
-      routePoints: [
-        { lat: 36.3006, lng: 137.8729 },
-        { lat: 36.3100, lng: 137.8800 },
-        { lat: 36.3234, lng: 137.8821 },
-      ],
-    }))
-
-    // ファイル入力をリセット
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+    try {
+      const points = await importRouteCSV(file)
+      setProgram((prev) => ({ ...prev, routePoints: points }))
+    } catch {
+      // エラーは無視（UIへのフィードバックはPhase 2で改善）
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
@@ -74,6 +105,32 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
     setProgram((prev) => ({
       ...prev,
       items: prev.items.filter((item) => item.id !== itemId),
+    }))
+    if (selectedMarkerId === itemId) {
+      setSelectedMarkerId(null)
+    }
+  }
+
+  const handleAddItem = (item: {
+    contentId: string
+    contentTitle: string
+    audioDurationSec: number
+    locationName: string
+    position: { lat: number; lng: number }
+  }) => {
+    setProgram((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          id: crypto.randomUUID(),
+          position: item.position,
+          locationName: item.locationName,
+          contentId: item.contentId,
+          contentTitle: item.contentTitle,
+          audioDurationSec: item.audioDurationSec,
+        },
+      ],
     }))
   }
 
@@ -86,12 +143,22 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
   return (
     <div className="flex h-full">
       {/* 左側: 地図エリア (60%) */}
-      <div className="w-[60%] p-4">
-        <div className="h-full w-full rounded-lg border bg-muted flex items-center justify-center">
-          <p className="text-muted-foreground text-sm">
-            地図（Leaflet）がここに入ります
-          </p>
-        </div>
+      <div className="w-[60%] h-full p-4">
+        <Map
+          center={mapCenter}
+          zoom={14}
+          routePoints={program.routePoints}
+          markers={markers}
+          selectedMarkerId={selectedMarkerId}
+          onMapClick={(pos) => {
+            setPendingPosition(pos)
+            setDialogOpen(true)
+          }}
+          onMarkerClick={(id) =>
+            setSelectedMarkerId((prev) => (prev === id ? null : id))
+          }
+          className="rounded-lg border"
+        />
       </div>
 
       {/* 右側: 設定パネル (40%) */}
@@ -182,7 +249,7 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
             <CardHeader className="pb-3">
               <CardTitle className="text-base">紐付けセット一覧</CardTitle>
               <CardDescription>
-                位置とコンテンツの紐付けを管理します
+                地図をクリックしてピンを追加し、コンテンツと紐付けます
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -207,7 +274,15 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
                     </TableRow>
                   ) : (
                     program.items.map((item) => (
-                      <TableRow key={item.id}>
+                      <TableRow
+                        key={item.id}
+                        className={`cursor-pointer ${item.id === selectedMarkerId ? 'bg-muted' : ''}`}
+                        onClick={() =>
+                          setSelectedMarkerId((prev) =>
+                            prev === item.id ? null : item.id
+                          )
+                        }
+                      >
                         <TableCell className="pl-4 font-medium">
                           {item.locationName}
                         </TableCell>
@@ -222,7 +297,10 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteItem(item.id)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteItem(item.id)
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                             <span className="sr-only">
@@ -238,6 +316,10 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
             </CardContent>
           </Card>
 
+          {saveError && (
+            <p className="text-sm text-destructive">{saveError}</p>
+          )}
+
           {/* 保存ボタン */}
           <Button
             className="w-full"
@@ -249,6 +331,14 @@ export function ProgramEditor({ program: initialProgram, isNew = false }: Progra
           </Button>
         </div>
       </div>
+
+      <ContentSelectDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        clickedPosition={pendingPosition}
+        contents={generatedContents}
+        onConfirm={handleAddItem}
+      />
     </div>
   )
 }

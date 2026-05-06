@@ -23,7 +23,7 @@ export const MOCK_POLLING_SITES: PollingSite[] = [
     url: 'https://www.daiowasabi.co.jp/info',
     enabled: false,
     lastFetchedAt: '2026-05-04T18:00:00+09:00',
-    lastStatus: 'error',
+    lastStatus: 'failure',
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440004',

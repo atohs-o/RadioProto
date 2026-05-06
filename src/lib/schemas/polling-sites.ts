@@ -6,7 +6,8 @@ export const pollingSiteSchema = z.object({
   url: z.string().url(),
   enabled: z.boolean(),
   lastFetchedAt: z.string().optional(),
-  lastStatus: z.enum(['success', 'error', 'pending']).optional(),
+  lastStatus: z.enum(['success', 'failure', 'pending']).optional(),
+  lastError: z.string().optional(),
 })
 
 export type PollingSite = z.infer<typeof pollingSiteSchema>

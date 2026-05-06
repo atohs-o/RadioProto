@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { updateProgramEnabled, deleteProgram } from '@/lib/stubs'
+import { updateProgramEnabledAction, deleteProgramAction } from './actions'
 
 interface ProgramsPageClientProps {
   programs: Program[]
@@ -37,14 +37,14 @@ export function ProgramsPageClient({ programs: initialPrograms }: ProgramsPageCl
   const [programs, setPrograms] = useState(initialPrograms)
 
   const handleToggleEnabled = async (id: string, enabled: boolean) => {
-    await updateProgramEnabled(id, enabled)
+    await updateProgramEnabledAction(id, enabled)
     setPrograms((prev) =>
       prev.map((p) => (p.id === id ? { ...p, enabled } : p))
     )
   }
 
   const handleDelete = async (id: string) => {
-    await deleteProgram(id)
+    await deleteProgramAction(id)
     setPrograms((prev) => prev.filter((p) => p.id !== id))
   }
 

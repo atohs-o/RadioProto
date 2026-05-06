@@ -1,49 +1,22 @@
+import { createClient } from '@/lib/supabase/server'
 import type { PollingSite } from '@/lib/schemas/polling-sites'
-import { MOCK_POLLING_SITES } from '@/lib/mocks/polling-sites'
 
-/**
- * ポーリングサイト一覧を取得
- * TODO: API接続はClaude Codeが実装
- */
 export async function getPollingSites(): Promise<PollingSite[]> {
-  return MOCK_POLLING_SITES
-}
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('polling_sites')
+    .select('id, name, url, is_active, last_polled_at, last_status, last_error')
+    .order('created_at', { ascending: false })
 
-/**
- * ポーリングサイトを追加
- * TODO: API接続はClaude Codeが実装
- */
-export async function createPollingSite(
-  data: Pick<PollingSite, 'name' | 'url'>
-): Promise<PollingSite> {
-  const newSite: PollingSite = {
-    id: crypto.randomUUID(),
-    name: data.name,
-    url: data.url,
-    enabled: true,
-    lastStatus: 'pending',
-  }
-  return newSite
-}
+  if (error) throw new Error(error.message)
 
-/**
- * ポーリングサイトの有効/無効を切り替え
- * TODO: API接続はClaude Codeが実装
- */
-export async function togglePollingSiteEnabled(
-  id: string,
-  enabled: boolean
-): Promise<PollingSite | null> {
-  const site = MOCK_POLLING_SITES.find((s) => s.id === id)
-  if (!site) return null
-  return { ...site, enabled }
-}
-
-/**
- * ポーリングサイトを削除
- * TODO: API接続はClaude Codeが実装
- */
-export async function deletePollingSite(id: string): Promise<boolean> {
-  const exists = MOCK_POLLING_SITES.some((s) => s.id === id)
-  return exists
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    enabled: row.is_active,
+    lastFetchedAt: row.last_polled_at ?? undefined,
+    lastStatus: (row.last_status as PollingSite['lastStatus']) ?? undefined,
+    lastError: row.last_error ?? undefined,
+  }))
 }
