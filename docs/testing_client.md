@@ -290,6 +290,87 @@ LIMIT 20;
 
 ---
 
+## クラウド環境での動作確認手順
+
+### 前提
+
+- ローカルでの動作確認が完了済み
+- Vercel へのデプロイが完了済み
+
+### 手順
+
+#### 1. スキーマをクラウドに反映
+
+```bash
+supabase db push
+```
+
+マイグレーションファイルがリモートの Supabase プロジェクトに適用される。
+実行前に `supabase link --project-ref <your-ref>` でプロジェクトと紐づいていることを確認。
+
+#### 2. クラウドの SQL Editor でテストデータを投入
+
+Supabase ダッシュボード → **SQL Editor** を開き、上記 Step 1 の SQL をすべて実行する。
+ローカルとクラウドは DB が別なので、ローカルで投入済みでも改めて実行が必要。
+
+#### 3. Vercel の環境変数を確認
+
+Vercel ダッシュボード → プロジェクト → **Settings** → **Environment Variables** で以下が設定されているか確認する。
+
+| 変数名 | 用途 |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase プロジェクト URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service Role キー（サーバー専用） |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | GCP サービスアカウント JSON 全体 |
+| `GCP_PROJECT_ID` | GCP プロジェクト ID |
+| `GCP_LOCATION` | Vertex AI リージョン（例: `us-central1`） |
+| `GEMINI_SCRIPTIFY_MODEL` | 台本化モデル名 |
+
+未設定の変数がある場合、API Route が `500` を返す原因になる。
+設定変更後は Vercel の **Redeploy** が必要（環境変数変更はビルドに反映されるため）。
+
+#### 4. デプロイ済み URL でブラウザ確認
+
+| URL | 確認内容 |
+|---|---|
+| `/login` | 管理者アカウントでログインできるか |
+| `/contents` | コンテンツ一覧が表示されるか |
+| `/client` | localStorage にトークンをセット後、番組選択画面が表示されるか |
+| `/client/confirm?programId=<id>` | GPS・サーバー接続確認画面が表示されるか |
+| `/client/play?programId=<id>` | 地図と再生ステータスバーが表示されるか |
+
+タブレット実機でテストする場合は HTTPS 必須（`navigator.geolocation` は HTTPS のみ動作）。
+Vercel のデプロイ URL はデフォルトで HTTPS なので問題ない。
+
+#### 5. クラウドの DB に記録が残っているか確認
+
+Supabase ダッシュボード → **SQL Editor** で以下を実行する（上記 Step 5 のクエリと同じ）。
+
+```sql
+-- 運行・再生イベントの確認
+SELECT
+  t.id         AS trip_id,
+  t.started_at,
+  t.ended_at,
+  tpe.status,
+  tpe.played_at,
+  tpe.duration_seconds,
+  rpi.display_name
+FROM public.trips t
+JOIN public.trip_playback_events tpe ON tpe.trip_id = t.id
+JOIN public.radio_program_items rpi ON rpi.id = tpe.radio_program_item_id
+ORDER BY t.started_at DESC, tpe.played_at DESC;
+
+-- GPS ログの確認
+SELECT lat, lng, recorded_at
+FROM public.vehicle_location_logs
+ORDER BY recorded_at DESC
+LIMIT 20;
+```
+
+---
+
 ## よくあるトラブル
 
 | 症状 | 原因 | 対処 |
