@@ -25,17 +25,25 @@ Claude Codeへの引き継ぎ情報として保管。
   現在のターゲット（sequence=N）に近づく
   → 10m以内に入る
   → 音声再生開始
-  → 再生完了 or 通過判定でsequence N+1へ進む
+  → 再生完了でsequence N+1へ進む
 
-通過判定：
-  現在のターゲットへの距離が「近づいてから再び遠ざかった」ことを検出したら通過とみなして次へ
-  （距離の最小値を記録し、最小値から20m以上離れたら通過）
+通過判定（3パターン）：
+  パターンA（正常再生）：
+    10m以内に入った → 再生開始 → 完了 → 次のsequenceへ
 
-フォールバック（バグ対策）：
-  タイムアウトN分経過したら強制的にsequence+1へ進む
-  （GPSが取れなかった・通過判定が失敗した場合の保険）
-  Nの目安：路線長と停留所間隔から決める。デフォルト5分。
-  環境変数 NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN で調整可能にする
+  パターンB（通過スキップ）：
+    10m以内に一度入ったが再生できなかった
+    → 最小距離から20m以上離れたらスキップ（status='skipped'）→ 次のsequenceへ
+
+  パターンC（未到達タイムアウト）：
+    10m以内に一度も入らなかった（カーブ迂回・GPS精度不足等）
+    → タイムアウト（NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN、デフォルト5分）でスキップ
+
+注意：
+  「10m以内に入ったことがある」フラグ（hasEnteredRadius）を持つ。
+  hasEnteredRadius=falseの場合はパターンBの通過判定を使わない。
+  これにより曲率のあるコースで「近づいてから遠ざかった」だけで
+  誤スキップされる問題を防ぐ。
 ```
 
 **実装上の注意**
@@ -51,14 +59,23 @@ Claude Codeへの引き継ぎ情報として保管。
 src/app/(client)/client/play/page.tsx の位置判定ロジックを以下の設計に修正してください。
 
 現状：全アイテムへの単純距離判定
-変更後：インデックス進行 + 通過判定 + タイムアウトフォールバック
+変更後：インデックス進行 + 3パターンの通過判定 + タイムアウトフォールバック
 
 1. 現在のターゲットインデックス（currentSequenceIndex）をstateで管理
-2. currentSequenceIndexのアイテムとのみ近傍判定（10m以内）
-3. 通過判定：距離の最小値を記録し、最小値から20m以上離れたら次のインデックスへ
-4. タイムアウト：NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN（デフォルト5分）経過で強制的に次へ
-5. スキップ時はtrip_playback_eventsにstatus='skipped'で記録
+2. currentSequenceIndexのアイテムとのみ近傍判定
+3. hasEnteredRadius（10m以内に入ったことがあるフラグ）をstateで管理
+
+4. 判定ロジック：
+   パターンA（正常）：10m以内に入った → 音声再生 → 完了で次のsequenceへ
+   パターンB（通過スキップ）：hasEnteredRadius=true かつ 最小距離から20m以上離れた
+                               → status='skipped'で記録 → 次のsequenceへ
+   パターンC（タイムアウト）：hasEnteredRadius=false のまま
+                               NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN（デフォルト5分）経過
+                               → status='skipped'で記録 → 次のsequenceへ
+
+5. sequenceが進む時にhasEnteredRadiusとminDistanceをリセット
 6. radio_program_itemsはsequenceカラムの昇順で処理する
+7. スキップ時はtrip_playback_eventsにstatus='skipped'で記録
 
 環境変数 NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN を .env.local と docs/testing_client.md に追記してください。
 ```
