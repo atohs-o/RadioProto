@@ -302,22 +302,22 @@ const MOCK_TRIPS: Trip[] = [
 
 const MOCK_PLAY_EVENTS: Record<string, PlayEvent[]> = {
   'trip-001': [
-    { id: 'ev-001', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'completed', playedAt: '2026-05-06T08:15:00Z' },
-    { id: 'ev-002', contentTitle: '穂高神社 例大祭のお知らせ', status: 'completed', playedAt: '2026-05-06T08:35:00Z' },
-    { id: 'ev-003', contentTitle: '道の駅 新商品情報', status: 'skipped', playedAt: '2026-05-06T09:00:00Z' },
-    { id: 'ev-004', contentTitle: '北アルプス紅葉情報', status: 'completed', playedAt: '2026-05-06T09:30:00Z' },
-    { id: 'ev-005', contentTitle: '安曇野市観光案内', status: 'error', playedAt: '2026-05-06T10:00:00Z' },
+    { id: 'ev-001', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'played', playedAt: '2026-05-06T08:15:00Z' },
+    { id: 'ev-002', contentTitle: '穂高神社 例大祭のお知らせ', status: 'played', playedAt: '2026-05-06T08:35:00Z' },
+    { id: 'ev-003', contentTitle: '道の駅 新商品情報', status: 'cancelled', playedAt: '2026-05-06T09:00:00Z' },
+    { id: 'ev-004', contentTitle: '北アルプス紅葉情報', status: 'played', playedAt: '2026-05-06T09:30:00Z' },
+    { id: 'ev-005', contentTitle: '安曇野市観光案内', status: 'failed', playedAt: '2026-05-06T10:00:00Z' },
   ],
   'trip-002': [
-    { id: 'ev-006', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'completed', playedAt: '2026-05-06T09:15:00Z' },
-    { id: 'ev-007', contentTitle: '穂高神社 例大祭のお知らせ', status: 'completed', playedAt: '2026-05-06T09:45:00Z' },
-    { id: 'ev-008', contentTitle: '道の駅 新商品情報', status: 'completed', playedAt: '2026-05-06T10:15:00Z' },
+    { id: 'ev-006', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'played', playedAt: '2026-05-06T09:15:00Z' },
+    { id: 'ev-007', contentTitle: '穂高神社 例大祭のお知らせ', status: 'played', playedAt: '2026-05-06T09:45:00Z' },
+    { id: 'ev-008', contentTitle: '道の駅 新商品情報', status: 'played', playedAt: '2026-05-06T10:15:00Z' },
   ],
   'trip-003': [
-    { id: 'ev-009', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'completed', playedAt: '2026-05-05T13:15:00Z' },
-    { id: 'ev-010', contentTitle: '北アルプス紅葉情報', status: 'completed', playedAt: '2026-05-05T13:45:00Z' },
-    { id: 'ev-011', contentTitle: '道の駅 新商品情報', status: 'skipped', playedAt: '2026-05-05T14:15:00Z' },
-    { id: 'ev-012', contentTitle: '安曇野市観光案内', status: 'completed', playedAt: '2026-05-05T14:45:00Z' },
+    { id: 'ev-009', contentTitle: '安曇野わさび農場 秋の収穫祭', status: 'played', playedAt: '2026-05-05T13:15:00Z' },
+    { id: 'ev-010', contentTitle: '北アルプス紅葉情報', status: 'played', playedAt: '2026-05-05T13:45:00Z' },
+    { id: 'ev-011', contentTitle: '道の駅 新商品情報', status: 'cancelled', playedAt: '2026-05-05T14:15:00Z' },
+    { id: 'ev-012', contentTitle: '安曇野市観光案内', status: 'played', playedAt: '2026-05-05T14:45:00Z' },
   ],
 }
 

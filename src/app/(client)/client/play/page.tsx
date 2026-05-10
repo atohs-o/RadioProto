@@ -57,6 +57,8 @@ function PlayPageContent() {
   const playedItemIdsRef = useRef<Set<string>>(new Set())
   const externalAudioRef = useRef(false)
   const positionHistoryRef = useRef<Array<{ lat: number; lng: number }>>([])
+  const lastHeadingRef = useRef<number | null>(null)
+  const lastSpeedKmhRef = useRef<number | null>(null)
   const broadcastChannelRef = useRef<RealtimeChannel | null>(null)
   const gpsWatchIdRef = useRef<number | null>(null)
   const locationLogIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -236,11 +238,16 @@ function PlayPageContent() {
       positionHistoryRef.current = [...positionHistoryRef.current, pos].slice(-3)
       const smoothed = smoothGps(positionHistoryRef.current)
 
+      const heading = position.coords.heading ?? null
+      const speedKmh = position.coords.speed != null ? position.coords.speed * 3.6 : null
+      lastHeadingRef.current = heading
+      lastSpeedKmhRef.current = speedKmh
+
       setCurrentPosition(smoothed)
       setGpsStatus(position.coords.accuracy > 100 ? 'low-accuracy' : 'active')
 
       if (broadcastChannelRef.current) {
-        sendLocation(broadcastChannelRef.current, smoothed.lat, smoothed.lng).catch(() => {})
+        sendLocation(broadcastChannelRef.current, smoothed.lat, smoothed.lng, heading, speedKmh).catch(() => {})
       }
 
       if (!programRef.current) return
@@ -350,7 +357,13 @@ function PlayPageContent() {
       fetch('/api/client/location', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Device-Token': deviceTokenRef.current },
-        body: JSON.stringify({ tripId: tripIdRef.current, lat: pos.lat, lng: pos.lng }),
+        body: JSON.stringify({
+          tripId: tripIdRef.current,
+          lat: pos.lat,
+          lng: pos.lng,
+          heading: lastHeadingRef.current ?? undefined,
+          speedKmh: lastSpeedKmhRef.current ?? undefined,
+        }),
       }).catch((err) => console.error('位置ログエラー:', err))
     }, LOCATION_LOG_INTERVAL_MS)
 

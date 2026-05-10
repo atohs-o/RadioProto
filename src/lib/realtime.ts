@@ -15,10 +15,12 @@ export async function sendLocation(
   channel: RealtimeChannel,
   lat: number,
   lng: number,
+  heading?: number | null,
+  speed?: number | null,
 ): Promise<void> {
   await channel.send({
     type: 'broadcast',
     event: 'location',
-    payload: { lat, lng, ts: Date.now() },
+    payload: { lat, lng, heading: heading ?? null, speed: speed ?? null, ts: Date.now() },
   })
 }

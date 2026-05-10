@@ -67,11 +67,11 @@ function formatTime(dateString: string): string {
 
 function getStatusBadgeVariant(status: PlayEvent['status']): 'default' | 'secondary' | 'destructive' {
   switch (status) {
-    case 'completed':
+    case 'played':
       return 'default'
-    case 'skipped':
+    case 'cancelled':
       return 'secondary'
-    case 'error':
+    case 'failed':
       return 'destructive'
     default:
       return 'default'
@@ -80,11 +80,11 @@ function getStatusBadgeVariant(status: PlayEvent['status']): 'default' | 'second
 
 function getStatusLabel(status: PlayEvent['status']): string {
   switch (status) {
-    case 'completed':
+    case 'played':
       return '完了'
-    case 'skipped':
-      return 'スキップ'
-    case 'error':
+    case 'cancelled':
+      return '中断'
+    case 'failed':
       return 'エラー'
     default:
       return status

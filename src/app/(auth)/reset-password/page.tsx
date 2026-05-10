@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { requestPasswordReset } from '@/lib/stubs'
+import { createClient } from '@/lib/supabase/client'
 
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState('')
@@ -19,12 +19,12 @@ export default function ResetPasswordPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    const result = await requestPasswordReset(email)
-
-    if (result.success) {
-      setIsSent(true)
-    }
-
+    const supabase = createClient()
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password/confirm`,
+    })
+    // セキュリティのためメール未登録でも成功扱い
+    setIsSent(true)
     setIsLoading(false)
   }
 

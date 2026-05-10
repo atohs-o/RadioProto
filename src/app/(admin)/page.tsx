@@ -1,39 +1,58 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { FileText, Radio, Bus, BarChart2 } from 'lucide-react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
 
-const dashboardItems = [
-  {
-    title: 'コンテンツ一覧',
-    description: '音声コンテンツの管理・編集',
-    href: '/contents',
-    icon: FileText,
-    count: 24,
-  },
-  {
-    title: 'ラジオ番組',
-    description: '番組の構成と配置設定',
-    href: '/programs',
-    icon: Radio,
-    count: 3,
-  },
-  {
-    title: 'バス管理',
-    description: '車両とデバイスの管理',
-    href: '/buses',
-    icon: Bus,
-    count: 5,
-  },
-  {
-    title: '再生ログ',
-    description: '運行・再生履歴の確認',
-    href: '/logs',
-    icon: BarChart2,
-    count: 156,
-  },
-]
+async function getDashboardCounts() {
+  const supabase = await createClient()
+  const [contents, programs, buses, trips] = await Promise.all([
+    supabase.from('contents').select('*', { count: 'exact', head: true }),
+    supabase.from('radio_programs').select('*', { count: 'exact', head: true }),
+    supabase.from('buses').select('*', { count: 'exact', head: true }),
+    supabase.from('trips').select('*', { count: 'exact', head: true }),
+  ])
+  return {
+    contents: contents.count ?? 0,
+    programs: programs.count ?? 0,
+    buses: buses.count ?? 0,
+    trips: trips.count ?? 0,
+  }
+}
 
-export default function AdminDashboardPage() {
+export default async function AdminDashboardPage() {
+  const counts = await getDashboardCounts()
+
+  const dashboardItems = [
+    {
+      title: 'コンテンツ一覧',
+      description: '音声コンテンツの管理・編集',
+      href: '/contents',
+      icon: FileText,
+      count: counts.contents,
+    },
+    {
+      title: 'ラジオ番組',
+      description: '番組の構成と配置設定',
+      href: '/programs',
+      icon: Radio,
+      count: counts.programs,
+    },
+    {
+      title: 'バス管理',
+      description: '車両とデバイスの管理',
+      href: '/buses',
+      icon: Bus,
+      count: counts.buses,
+    },
+    {
+      title: '再生ログ',
+      description: '運行・再生履歴の確認',
+      href: '/logs',
+      icon: BarChart2,
+      count: counts.trips,
+    },
+  ]
+
   return (
     <div className="space-y-6">
       <div>

@@ -18,7 +18,7 @@ export interface Trip {
 export interface PlayEvent {
   id: string
   contentTitle: string
-  status: 'completed' | 'skipped' | 'error'
+  status: 'played' | 'failed' | 'cancelled'
   playedAt: string
 }
 

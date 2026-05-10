@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { Radio, Eye, EyeOff, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,12 +9,9 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Field, FieldGroup, FieldLabel, FieldError } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { resetPassword } from '@/lib/stubs'
+import { createClient } from '@/lib/supabase/client'
 
 export default function ResetPasswordConfirmPage() {
-  const searchParams = useSearchParams()
-  const token = searchParams.get('token') ?? ''
-
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -23,6 +19,19 @@ export default function ResetPasswordConfirmPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [isRecoveryReady, setIsRecoveryReady] = useState(false)
+
+  // Supabase がリセットメールのリンクから戻ると hash に access_token が含まれる。
+  // onAuthStateChange の PASSWORD_RECOVERY イベントで検知してから updateUser を許可する。
+  useEffect(() => {
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryReady(true)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword
 
@@ -42,12 +51,13 @@ export default function ResetPasswordConfirmPage() {
     setIsLoading(true)
     setError(null)
 
-    const result = await resetPassword(token, password)
+    const supabase = createClient()
+    const { error: updateError } = await supabase.auth.updateUser({ password })
 
-    if (result.success) {
-      setIsSuccess(true)
+    if (updateError) {
+      setError(updateError.message ?? 'パスワードの更新に失敗しました')
     } else {
-      setError(result.error ?? 'パスワードの更新に失敗しました')
+      setIsSuccess(true)
     }
 
     setIsLoading(false)
@@ -92,6 +102,11 @@ export default function ResetPasswordConfirmPage() {
         </p>
       </CardHeader>
       <CardContent>
+        {!isRecoveryReady && (
+          <Alert className="mb-4">
+            <AlertDescription>リセットリンクを確認中です...</AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive" className="mb-4">
             <AlertDescription>{error}</AlertDescription>
@@ -163,7 +178,7 @@ export default function ResetPasswordConfirmPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || passwordMismatch}
+              disabled={isLoading || passwordMismatch || !isRecoveryReady}
             >
               {isLoading ? <Spinner className="mr-2" /> : null}
               パスワードを更新
