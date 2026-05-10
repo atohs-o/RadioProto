@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { PlusIcon, SearchIcon, PencilIcon, TrashIcon } from 'lucide-react'
 import type { Content } from '@/lib/schemas/content'
-import { deleteContent } from '@/lib/api/contents'
+import { deleteContentAction } from '@/app/(admin)/contents/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -82,8 +82,10 @@ export function ContentsTable({ initialContents }: ContentsTableProps) {
   }, [contents, searchKeyword, sourceTypeFilter])
 
   const handleDelete = async (id: string) => {
-    await deleteContent(id)
-    setContents((prev) => prev.filter((c) => c.id !== id))
+    const result = await deleteContentAction(id)
+    if (!result.error) {
+      setContents((prev) => prev.filter((c) => c.id !== id))
+    }
   }
 
   const formatDate = (dateString: string) => {
