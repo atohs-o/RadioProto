@@ -69,6 +69,7 @@ function getStatusBadgeVariant(status: PlayEvent['status']): 'default' | 'second
   switch (status) {
     case 'played':
       return 'default'
+    case 'skipped':
     case 'cancelled':
       return 'secondary'
     case 'failed':
@@ -82,6 +83,8 @@ function getStatusLabel(status: PlayEvent['status']): string {
   switch (status) {
     case 'played':
       return '完了'
+    case 'skipped':
+      return 'スキップ'
     case 'cancelled':
       return '中断'
     case 'failed':

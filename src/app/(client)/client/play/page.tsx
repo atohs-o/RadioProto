@@ -20,6 +20,9 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 const PlayMap = dynamic(() => import('@/components/client/play-map'), { ssr: false })
 
 const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')
+const AUDIO_TIMEOUT_SEC = Number(process.env.NEXT_PUBLIC_AUDIO_TIMEOUT_SEC ?? '120')
+const WAYPOINT_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN ?? '5') * 60_000
+const PASS_THROUGH_MARGIN_M = 20
 const AUDIO_CACHE = 'autodj-audio-v1'
 const LOCATION_LOG_INTERVAL_MS = 30_000
 
@@ -59,14 +62,22 @@ function PlayPageContent() {
   const positionHistoryRef = useRef<Array<{ lat: number; lng: number }>>([])
   const lastHeadingRef = useRef<number | null>(null)
   const lastSpeedKmhRef = useRef<number | null>(null)
+  const lastSmoothedPositionRef = useRef<{ lat: number; lng: number } | null>(null)
   const broadcastChannelRef = useRef<RealtimeChannel | null>(null)
   const gpsWatchIdRef = useRef<number | null>(null)
   const locationLogIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // sequence 管理
+  const sortedItemsRef = useRef<ClientProgramItem[]>([])
+  const currentSequenceIdxRef = useRef<number>(0)
+  const hasEnteredRadiusRef = useRef<boolean>(false)
+  const minDistanceToTargetRef = useRef<number>(Infinity)
+  const waypointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const advanceToNextSequenceRef = useRef<() => void>(() => {})
 
   const recordPlaybackEvent = useCallback(
     async (
       itemId: string,
-      status: 'played' | 'failed' | 'cancelled',
+      status: 'played' | 'skipped' | 'failed' | 'cancelled',
       durationSeconds?: number,
     ) => {
       if (!tripIdRef.current || !deviceTokenRef.current) return
@@ -122,6 +133,56 @@ function PlayPageContent() {
     }
   }, [])
 
+  const advanceToNextSequence = useCallback(() => {
+    if (waypointTimerRef.current) {
+      clearTimeout(waypointTimerRef.current)
+      waypointTimerRef.current = null
+    }
+    currentSequenceIdxRef.current += 1
+    hasEnteredRadiusRef.current = false
+    minDistanceToTargetRef.current = Infinity
+
+    const items = sortedItemsRef.current
+    while (
+      currentSequenceIdxRef.current < items.length &&
+      !items[currentSequenceIdxRef.current].audioFileId
+    ) {
+      currentSequenceIdxRef.current += 1
+    }
+
+    const idx = currentSequenceIdxRef.current
+    if (idx >= items.length) return
+
+    const nextTarget = items[idx]
+
+    waypointTimerRef.current = setTimeout(() => {
+      if (!hasEnteredRadiusRef.current) {
+        recordPlaybackEvent(nextTarget.id, 'skipped').catch(() => {})
+        advanceToNextSequenceRef.current()
+      }
+    }, WAYPOINT_TIMEOUT_MS)
+
+    if (lastSmoothedPositionRef.current) {
+      const dist = haversineDistance(lastSmoothedPositionRef.current, {
+        lat: nextTarget.lat,
+        lng: nextTarget.lng,
+      })
+      if (dist <= TRIGGER_RADIUS_M) {
+        hasEnteredRadiusRef.current = true
+        minDistanceToTargetRef.current = dist
+        if (!audioQueueRef.current.some((q) => q.id === nextTarget.id)) {
+          audioQueueRef.current = [...audioQueueRef.current, nextTarget]
+          setQueueCount(audioQueueRef.current.length)
+          if (!isPlayingRef.current) playNextFromQueueRef.current()
+        }
+      }
+    }
+  }, [recordPlaybackEvent])
+
+  useEffect(() => {
+    advanceToNextSequenceRef.current = advanceToNextSequence
+  }, [advanceToNextSequence])
+
   const playNextFromQueue = useCallback(async () => {
     if (isPlayingRef.current) return
     if (audioQueueRef.current.length === 0) return
@@ -147,12 +208,19 @@ function PlayPageContent() {
       if (cached) {
         objectUrl = URL.createObjectURL(await cached.blob())
       } else {
-        const res = await fetch(`/api/client/audio/${item.audioFileId}`, {
-          headers: { 'X-Device-Token': deviceTokenRef.current! },
-        })
-        const { signedUrl } = (await res.json()) as { signedUrl: string }
-        const audioRes = await fetch(signedUrl)
-        objectUrl = URL.createObjectURL(await audioRes.blob())
+        const controller = new AbortController()
+        const timerId = setTimeout(() => controller.abort(), AUDIO_TIMEOUT_SEC * 1000)
+        try {
+          const res = await fetch(`/api/client/audio/${item.audioFileId}`, {
+            headers: { 'X-Device-Token': deviceTokenRef.current! },
+            signal: controller.signal,
+          })
+          const { signedUrl } = (await res.json()) as { signedUrl: string }
+          const audioRes = await fetch(signedUrl, { signal: controller.signal })
+          objectUrl = URL.createObjectURL(await audioRes.blob())
+        } finally {
+          clearTimeout(timerId)
+        }
       }
 
       currentObjectUrlRef.current = objectUrl
@@ -183,7 +251,7 @@ function PlayPageContent() {
           currentPlayingItemRef.current = null
           setPlayingItemId(null)
 
-          playNextFromQueueRef.current()
+          advanceToNextSequenceRef.current()
         },
         { once: true },
       )
@@ -237,6 +305,7 @@ function PlayPageContent() {
 
       positionHistoryRef.current = [...positionHistoryRef.current, pos].slice(-3)
       const smoothed = smoothGps(positionHistoryRef.current)
+      lastSmoothedPositionRef.current = smoothed
 
       const heading = position.coords.heading ?? null
       const speedKmh = position.coords.speed != null ? position.coords.speed * 3.6 : null
@@ -250,21 +319,31 @@ function PlayPageContent() {
         sendLocation(broadcastChannelRef.current, smoothed.lat, smoothed.lng, heading, speedKmh).catch(() => {})
       }
 
-      if (!programRef.current) return
-      for (const item of programRef.current.items) {
-        if (!item.audioFileId) continue
-        if (playedItemIdsRef.current.has(item.id)) continue
-        if (audioQueueRef.current.some((q) => q.id === item.id)) continue
+      const items = sortedItemsRef.current
+      const idx = currentSequenceIdxRef.current
+      if (idx >= items.length) return
 
-        const dist = haversineDistance(smoothed, { lat: item.lat, lng: item.lng })
-        if (dist <= TRIGGER_RADIUS_M) {
-          audioQueueRef.current = [...audioQueueRef.current, item]
+      const target = items[idx]
+      const dist = haversineDistance(smoothed, { lat: target.lat, lng: target.lng })
+
+      if (dist <= TRIGGER_RADIUS_M) {
+        hasEnteredRadiusRef.current = true
+        if (dist < minDistanceToTargetRef.current) minDistanceToTargetRef.current = dist
+        if (!audioQueueRef.current.some((q) => q.id === target.id) && !isPlayingRef.current) {
+          audioQueueRef.current = [...audioQueueRef.current, target]
           setQueueCount(audioQueueRef.current.length)
-          if (!isPlayingRef.current) playNextFromQueue()
+          playNextFromQueue()
         }
+      } else if (
+        hasEnteredRadiusRef.current &&
+        dist > minDistanceToTargetRef.current + PASS_THROUGH_MARGIN_M
+      ) {
+        // Pattern B: 通過スキップ
+        recordPlaybackEvent(target.id, 'skipped').catch(() => {})
+        advanceToNextSequenceRef.current()
       }
     },
-    [playNextFromQueue],
+    [playNextFromQueue, recordPlaybackEvent],
   )
 
   // 初期化（認証・番組取得・trip開始・Realtime接続）
@@ -316,6 +395,34 @@ function PlayPageContent() {
           const channel = createLocationChannel(busId)
           await channel.subscribe()
           broadcastChannelRef.current = channel
+        }
+
+        // sequence 昇順ソート（null は末尾）
+        sortedItemsRef.current = [...found.items].sort((a, b) => {
+          if (a.sequence === null && b.sequence === null) return 0
+          if (a.sequence === null) return 1
+          if (b.sequence === null) return -1
+          return a.sequence - b.sequence
+        })
+
+        // audioFileId のない先頭アイテムを連続スキップ
+        currentSequenceIdxRef.current = 0
+        while (
+          currentSequenceIdxRef.current < sortedItemsRef.current.length &&
+          !sortedItemsRef.current[currentSequenceIdxRef.current].audioFileId
+        ) {
+          currentSequenceIdxRef.current += 1
+        }
+
+        // 最初のターゲットのタイムアウトタイマー開始（Pattern C）
+        const firstTarget = sortedItemsRef.current[currentSequenceIdxRef.current]
+        if (firstTarget) {
+          waypointTimerRef.current = setTimeout(() => {
+            if (!hasEnteredRadiusRef.current) {
+              recordPlaybackEvent(firstTarget.id, 'skipped').catch(() => {})
+              advanceToNextSequenceRef.current()
+            }
+          }, WAYPOINT_TIMEOUT_MS)
         }
 
         setIsLoading(false)
@@ -378,6 +485,7 @@ function PlayPageContent() {
         navigator.geolocation.clearWatch(gpsWatchIdRef.current)
       }
       if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
+      if (waypointTimerRef.current) clearTimeout(waypointTimerRef.current)
       if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
       if (audioRef.current) {
         audioRef.current.pause()

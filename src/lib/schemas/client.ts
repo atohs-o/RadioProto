@@ -55,6 +55,6 @@ export const LocationBodySchema = z.object({
 export const PlaybackEventBodySchema = z.object({
   tripId: z.string().uuid(),
   radioProgramItemId: z.string().uuid(),
-  status: z.enum(['played', 'failed', 'cancelled']),
+  status: z.enum(['played', 'skipped', 'failed', 'cancelled']),
   durationSeconds: z.number().optional(),
 })

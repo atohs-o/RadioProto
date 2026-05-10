@@ -105,9 +105,14 @@ getServerEnv()       // サーバー専用シークレット（Server Component 
 ```
 
 `/client/play`（`src/app/(client)/client/play/page.tsx`）の主要処理:
-- `NEXT_PUBLIC_TRIGGER_RADIUS_M`（デフォルト 10m）以内に入ったアイテムをキューに追加
+- `NEXT_PUBLIC_TRIGGER_RADIUS_M`（デフォルト 10m）以内に入ったら **現在 sequence ターゲットのみ** キューに追加
+- sequence 管理: `sequence` 昇順でターゲットを1件ずつ追跡。再生完了/通過/タイムアウトで N+1 へ進む
+  - Pattern A（正常）: 10m 圏内 → 再生完了 → N+1
+  - Pattern B（通過）: 圏内進入後 `PASS_THROUGH_MARGIN_M`(20m) 以上離れる → `skipped` → N+1
+  - Pattern C（タイムアウト）: `NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN`（デフォルト 5 分）圏外のまま経過 → `skipped` → N+1
 - GPS は直近3点の移動平均でスムージング（`src/lib/geo.ts` の `smoothGps`）
 - 音声は Cache API に先読み（名前: `autodj-audio-v1`、キー: `/audio-cache/${audioFileId}`）
+- 音声取得は `NEXT_PUBLIC_AUDIO_TIMEOUT_SEC`（デフォルト 120 秒）で AbortController タイムアウト
 - objectURL は再生終了・エラー・運行終了時に必ず `URL.revokeObjectURL()` で解放
 
 ### 3-5. 音声ファイルの取得経路
@@ -260,6 +265,8 @@ supabase/
 - **追加は事前承認制**: `pnpm add` を勝手に実行せず、理由とともに提案する
 - `lock` ファイルは `pnpm-lock.yaml` のみ
 
+**承認済み追加パッケージ**: `swr`（管理画面のデータフェッチ用）
+
 **追加禁止**: `workbox-*`、`redux/zustand/jotai`、`axios/ky`、`moment/dayjs`、`lodash`
 
 ---
@@ -313,3 +320,4 @@ Plan 不要:
 | 2026-05-01 | 初版作成（機能仕様書 v2 rev3 準拠） |
 | 2026-05-01 (rev2) | DB 初期マイグレーション後の追記 |
 | 2026-05-10 (rev3) | 実装フェーズ完了後の改訂：Supabase クライアント三種・env.ts パターン・音声ファイル選択ロジック・車内クライアントフロー・TTS systemInstruction 非サポートを追記、shadcn/ui 採用済みに更新 |
+| 2026-05-10 (rev4) | sequence 管理実装後の改訂：車内クライアントフロー詳細（3パターン）・音声タイムアウト・swr 承認済みパッケージ追記 |
