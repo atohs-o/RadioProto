@@ -26,8 +26,14 @@ import {
 } from '@/components/ui/dialog'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
-import { getBuses, createBus, disableBus } from '@/lib/stubs'
+import { ErrorState } from '@/components/common/error-state'
 import type { Bus } from '@/types'
+
+async function fetchBuses(): Promise<Bus[]> {
+  const res = await fetch('/api/admin/buses')
+  if (!res.ok) throw new Error('バス一覧の取得に失敗しました')
+  return res.json() as Promise<Bus[]>
+}
 
 function maskToken(token: string): string {
   if (token.length <= 8) return '****'
@@ -46,7 +52,7 @@ function formatDate(dateString: string | undefined): string {
 }
 
 export default function BusesPage() {
-  const { data: buses, isLoading, mutate } = useSWR<Bus[]>('buses', getBuses)
+  const { data: buses, isLoading, error, mutate } = useSWR<Bus[]>('buses', fetchBuses)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false)
   const [selectedToken, setSelectedToken] = useState('')
@@ -66,7 +72,8 @@ export default function BusesPage() {
   const handleConfirmDisable = async () => {
     if (!busToDisable) return
     try {
-      await disableBus(busToDisable.id)
+      const res = await fetch(`/api/admin/buses/${busToDisable.id}`, { method: 'PATCH' })
+      if (!res.ok) throw new Error()
       await mutate()
       toast.success(`${busToDisable.busName}を無効化しました`)
     } catch {
@@ -92,7 +99,9 @@ export default function BusesPage() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {error ? (
+        <ErrorState retry={() => mutate()} />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Spinner className="size-6" />
         </div>
@@ -154,14 +163,12 @@ export default function BusesPage() {
         </div>
       )}
 
-      {/* Add Bus Dialog */}
       <AddBusDialog
         open={isAddDialogOpen}
         onOpenChange={setIsAddDialogOpen}
         onSuccess={() => mutate()}
       />
 
-      {/* Token Display Dialog */}
       <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -181,7 +188,6 @@ export default function BusesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirm Disable Dialog */}
       <ConfirmDialog
         open={confirmDialogOpen}
         onOpenChange={setConfirmDialogOpen}
@@ -216,14 +222,22 @@ function AddBusDialog({
 
     setIsCreating(true)
     try {
-      await createBus({ busCode, busName })
+      const res = await fetch('/api/admin/buses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ busCode, busName }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error ?? 'エラー')
+      }
       toast.success('バスを追加しました')
       setBusCode('')
       setBusName('')
       onOpenChange(false)
       onSuccess()
-    } catch {
-      toast.error('バスの追加に失敗しました')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'バスの追加に失敗しました')
     } finally {
       setIsCreating(false)
     }

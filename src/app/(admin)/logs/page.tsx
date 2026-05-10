@@ -23,10 +23,31 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
-import { getTrips, getPlayEventsByTripId, getBuses } from '@/lib/stubs'
+import { ErrorState } from '@/components/common/error-state'
 import type { Trip, PlayEvent, Bus } from '@/types'
 import { FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+async function fetchBuses(): Promise<Bus[]> {
+  const res = await fetch('/api/admin/buses')
+  if (!res.ok) throw new Error('バス一覧の取得に失敗しました')
+  return res.json() as Promise<Bus[]>
+}
+
+async function fetchTrips({ date, busCode }: { date?: string; busCode?: string }): Promise<Trip[]> {
+  const params = new URLSearchParams()
+  if (date) params.set('date', date)
+  if (busCode) params.set('busCode', busCode)
+  const res = await fetch(`/api/admin/trips?${params.toString()}`)
+  if (!res.ok) throw new Error('運行一覧の取得に失敗しました')
+  return res.json() as Promise<Trip[]>
+}
+
+async function fetchEvents(tripId: string): Promise<PlayEvent[]> {
+  const res = await fetch(`/api/admin/trips/${tripId}/events`)
+  if (!res.ok) throw new Error('再生イベントの取得に失敗しました')
+  return res.json() as Promise<PlayEvent[]>
+}
 
 function formatDateTime(dateString: string): string {
   return new Date(dateString).toLocaleString('ja-JP', {
@@ -75,17 +96,17 @@ export default function LogsPage() {
   const [busFilter, setBusFilter] = useState<string>('all')
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null)
 
-  const { data: buses } = useSWR<Bus[]>('buses', getBuses)
-  const { data: trips, isLoading: isLoadingTrips } = useSWR<Trip[]>(
+  const { data: buses } = useSWR<Bus[]>('buses', fetchBuses)
+  const { data: trips, isLoading: isLoadingTrips, error: tripsError, mutate: mutateTrips } = useSWR<Trip[]>(
     ['trips', dateFilter, busFilter],
-    () => getTrips({
+    () => fetchTrips({
       date: dateFilter || undefined,
       busCode: busFilter !== 'all' ? busFilter : undefined,
     })
   )
-  const { data: playEvents, isLoading: isLoadingEvents } = useSWR<PlayEvent[]>(
+  const { data: playEvents, isLoading: isLoadingEvents, error: eventsError, mutate: mutateEvents } = useSWR<PlayEvent[]>(
     selectedTripId ? ['playEvents', selectedTripId] : null,
-    () => selectedTripId ? getPlayEventsByTripId(selectedTripId) : Promise.resolve([])
+    () => selectedTripId ? fetchEvents(selectedTripId) : Promise.resolve([])
   )
 
   const selectedTrip = useMemo(() => {
@@ -101,7 +122,6 @@ export default function LogsPage() {
         </p>
       </div>
 
-      {/* Filters */}
       <FieldGroup className="flex flex-col gap-4 sm:flex-row sm:items-end">
         <Field className="sm:w-48">
           <FieldLabel htmlFor="dateFilter">日付</FieldLabel>
@@ -130,15 +150,15 @@ export default function LogsPage() {
         </Field>
       </FieldGroup>
 
-      {/* Split Layout: md以上で左40%/右60%、md未満で上下積み */}
       <div className="flex flex-col gap-4 md:flex-row">
-        {/* Left: Trip List (40%) */}
         <Card className="md:w-2/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">運行一覧</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {isLoadingTrips ? (
+            {tripsError ? (
+              <ErrorState retry={() => mutateTrips()} className="py-8" />
+            ) : isLoadingTrips ? (
               <div className="flex items-center justify-center py-12">
                 <Spinner className="size-6" />
               </div>
@@ -190,7 +210,6 @@ export default function LogsPage() {
           </CardContent>
         </Card>
 
-        {/* Right: Play Events (60%) */}
         <Card className="md:w-3/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">
@@ -203,7 +222,9 @@ export default function LogsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {!selectedTripId ? (
+            {eventsError ? (
+              <ErrorState retry={() => mutateEvents()} className="py-8" />
+            ) : !selectedTripId ? (
               <Empty className="py-8">
                 <EmptyMedia>
                   <FileText className="size-8" />

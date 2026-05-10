@@ -8,9 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import { getUserProfile, updateUserProfile, changePassword, clearAudioCache, exportPlayLogs } from '@/lib/stubs'
+import { ErrorState } from '@/components/common/error-state'
 import type { UserProfile } from '@/types'
 import useSWR from 'swr'
+
+async function fetchProfile(): Promise<UserProfile> {
+  const res = await fetch('/api/admin/profile')
+  if (!res.ok) throw new Error('プロフィールの取得に失敗しました')
+  return res.json() as Promise<UserProfile>
+}
 
 export default function SettingsPage() {
   return (
@@ -46,30 +52,44 @@ export default function SettingsPage() {
 }
 
 function ProfileTab() {
-  const { data: profile, isLoading, mutate } = useSWR<UserProfile>('profile', getUserProfile)
+  const { data: profile, isLoading, error, mutate } = useSWR<UserProfile>('profile', fetchProfile)
   const [displayName, setDisplayName] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
-  // Update local state when profile loads
-  const handleDisplayNameChange = (value: string) => {
-    setDisplayName(value)
-  }
-
   const handleSave = async () => {
-    if (!displayName.trim()) {
+    const name = displayName || profile?.displayName || ''
+    if (!name.trim()) {
       toast.error('表示名を入力してください')
       return
     }
     setIsSaving(true)
     try {
-      await updateUserProfile({ displayName })
+      const res = await fetch('/api/admin/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: name }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error ?? 'エラー')
+      }
       await mutate()
       toast.success('プロフィールを保存しました')
-    } catch {
-      toast.error('保存に失敗しました')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '保存に失敗しました')
     } finally {
       setIsSaving(false)
     }
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent>
+          <ErrorState retry={() => mutate()} />
+        </CardContent>
+      </Card>
+    )
   }
 
   if (isLoading) {
@@ -97,7 +117,7 @@ function ProfileTab() {
             <Input
               id="displayName"
               defaultValue={profile?.displayName ?? ''}
-              onChange={(e) => handleDisplayNameChange(e.target.value)}
+              onChange={(e) => setDisplayName(e.target.value)}
               placeholder="表示名を入力"
             />
           </Field>
@@ -142,13 +162,21 @@ function PasswordTab() {
 
     setIsChanging(true)
     try {
-      await changePassword({ currentPassword, newPassword })
+      const res = await fetch('/api/admin/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error ?? 'エラー')
+      }
       toast.success('パスワードを変更しました')
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-    } catch {
-      toast.error('パスワードの変更に失敗しました')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'パスワードの変更に失敗しました')
     } finally {
       setIsChanging(false)
     }
@@ -205,22 +233,6 @@ function PasswordTab() {
 }
 
 function DataManagementTab() {
-  const handleClearCache = async () => {
-    try {
-      await clearAudioCache()
-    } catch {
-      toast.info('この機能は準備中です')
-    }
-  }
-
-  const handleExportLogs = async () => {
-    try {
-      await exportPlayLogs()
-    } catch {
-      toast.info('この機能は準備中です')
-    }
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -231,10 +243,10 @@ function DataManagementTab() {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4 max-w-md">
-          <Button variant="outline" onClick={handleClearCache}>
+          <Button variant="outline" onClick={() => toast.info('この機能は準備中です')}>
             音声ファイルキャッシュをクリア
           </Button>
-          <Button variant="outline" onClick={handleExportLogs}>
+          <Button variant="outline" onClick={() => toast.info('この機能は準備中です')}>
             再生ログをエクスポート
           </Button>
         </div>
