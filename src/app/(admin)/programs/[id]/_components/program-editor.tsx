@@ -22,7 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { ArrowLeft, Save, Upload, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Upload, Trash2, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import Map from '@/components/map/map'
@@ -43,6 +43,13 @@ interface ProgramEditorProps {
   generatedContents: GeneratedContent[]
 }
 
+interface EditingItemInfo {
+  id: string
+  contentId: string
+  locationName: string
+  position: { lat: number; lng: number }
+}
+
 export function ProgramEditor({
   program: initialProgram,
   isNew = false,
@@ -56,6 +63,10 @@ export function ProgramEditor({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pendingPosition, setPendingPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
+  const [editingItem, setEditingItem] = useState<EditingItemInfo | null>(null)
+  const [isRelocating, setIsRelocating] = useState(false)
+  // ref でクロージャの stale 問題を回避（handleDialogOpenChange が isRelocating を参照するため）
+  const isRelocatingRef = useRef(false)
 
   const mapCenter =
     program.routePoints[0] ??
@@ -134,6 +145,53 @@ export function ProgramEditor({
     }))
   }
 
+  const handleEditItem = (itemId: string) => {
+    const item = program.items.find((i) => i.id === itemId)
+    if (!item) return
+    setEditingItem({
+      id: item.id,
+      contentId: item.contentId,
+      locationName: item.locationName,
+      position: item.position,
+    })
+    setDialogOpen(true)
+  }
+
+  const handleUpdateItem = (update: {
+    id: string
+    contentId: string
+    contentTitle: string
+    audioDurationSec: number
+    locationName: string
+    position: { lat: number; lng: number }
+  }) => {
+    setProgram((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === update.id ? { ...item, ...update } : item
+      ),
+    }))
+    setEditingItem(null)
+  }
+
+  const handleRequestMapReselect = () => {
+    isRelocatingRef.current = true
+    setIsRelocating(true)
+    // ダイアログは onOpenChange(false) 側で閉じられる（二重呼び出し回避）
+  }
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open)
+    if (!open) {
+      if (isRelocatingRef.current) {
+        // 地図再選択待ち中はクリーンアップしない
+        return
+      }
+      setEditingItem(null)
+      setPendingPosition(null)
+    }
+  }
+
   const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60)
     const sec = seconds % 60
@@ -143,7 +201,12 @@ export function ProgramEditor({
   return (
     <div className="flex h-full">
       {/* 左側: 地図エリア (60%) */}
-      <div className="w-[60%] h-full p-4">
+      <div className="relative w-[60%] h-full p-4">
+        {isRelocating && (
+          <div className="absolute top-8 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow">
+            地図をクリックして新しい位置を選択してください
+          </div>
+        )}
         <Map
           center={mapCenter}
           zoom={14}
@@ -151,8 +214,15 @@ export function ProgramEditor({
           markers={markers}
           selectedMarkerId={selectedMarkerId}
           onMapClick={(pos) => {
-            setPendingPosition(pos)
-            setDialogOpen(true)
+            if (isRelocatingRef.current && editingItem) {
+              isRelocatingRef.current = false
+              setIsRelocating(false)
+              setEditingItem((prev) => (prev ? { ...prev, position: pos } : null))
+              setDialogOpen(true)
+            } else {
+              setPendingPosition(pos)
+              setDialogOpen(true)
+            }
           }}
           onMarkerClick={(id) =>
             setSelectedMarkerId((prev) => (prev === id ? null : id))
@@ -259,7 +329,7 @@ export function ProgramEditor({
                     <TableHead className="pl-4">位置名称</TableHead>
                     <TableHead>コンテンツ</TableHead>
                     <TableHead className="w-[70px] text-right">音声長</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    <TableHead className="w-[90px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -293,20 +363,36 @@ export function ProgramEditor({
                           {formatDuration(item.audioDurationSec)}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteItem(item.id)
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">
-                              {item.locationName}を削除
-                            </span>
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleEditItem(item.id)
+                              }}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              <span className="sr-only">
+                                {item.locationName}を編集
+                              </span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteItem(item.id)
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">
+                                {item.locationName}を削除
+                              </span>
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -334,10 +420,13 @@ export function ProgramEditor({
 
       <ContentSelectDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         clickedPosition={pendingPosition}
         contents={generatedContents}
+        editingItem={editingItem}
         onConfirm={handleAddItem}
+        onUpdate={handleUpdateItem}
+        onRequestMapReselect={handleRequestMapReselect}
       />
     </div>
   )

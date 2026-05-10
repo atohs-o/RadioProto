@@ -26,6 +26,13 @@ interface GeneratedContent {
   audioDurationSec?: number
 }
 
+interface EditingItemInfo {
+  id: string
+  contentId: string
+  locationName: string
+  position: { lat: number; lng: number }
+}
+
 interface ContentSelectDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -38,6 +45,16 @@ interface ContentSelectDialogProps {
     locationName: string
     position: { lat: number; lng: number }
   }) => void
+  editingItem?: EditingItemInfo | null
+  onUpdate?: (update: {
+    id: string
+    contentId: string
+    contentTitle: string
+    audioDurationSec: number
+    locationName: string
+    position: { lat: number; lng: number }
+  }) => void
+  onRequestMapReselect?: () => void
 }
 
 function formatDuration(seconds: number) {
@@ -52,46 +69,78 @@ export function ContentSelectDialog({
   clickedPosition,
   contents,
   onConfirm,
+  editingItem,
+  onUpdate,
+  onRequestMapReselect,
 }: ContentSelectDialogProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [locationName, setLocationName] = useState('')
 
+  const currentPosition = clickedPosition ?? editingItem?.position ?? null
+
   useEffect(() => {
     if (open) {
-      setSelectedId(null)
-      setLocationName('')
+      setSelectedId(editingItem?.contentId ?? null)
+      setLocationName(editingItem?.locationName ?? '')
     }
-  }, [open])
+  }, [open, editingItem])
 
   const handleConfirm = () => {
-    if (!selectedId || !clickedPosition) return
+    if (!selectedId || !currentPosition) return
     const content = contents.find((c) => c.id === selectedId)
     if (!content) return
 
-    onConfirm({
-      contentId: content.id,
-      contentTitle: content.title,
-      audioDurationSec: content.audioDurationSec ?? 0,
-      locationName: locationName.trim() || content.title,
-      position: clickedPosition,
-    })
+    if (editingItem) {
+      onUpdate?.({
+        id: editingItem.id,
+        contentId: content.id,
+        contentTitle: content.title,
+        audioDurationSec: content.audioDurationSec ?? 0,
+        locationName: locationName.trim() || content.title,
+        position: currentPosition,
+      })
+    } else {
+      onConfirm({
+        contentId: content.id,
+        contentTitle: content.title,
+        audioDurationSec: content.audioDurationSec ?? 0,
+        locationName: locationName.trim() || content.title,
+        position: currentPosition,
+      })
+    }
     onOpenChange(false)
   }
 
-  const canConfirm = selectedId !== null && clickedPosition !== null
+  const canConfirm = selectedId !== null && currentPosition !== null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>コンテンツを選択</DialogTitle>
+          <DialogTitle>
+            {editingItem ? 'コンテンツを編集' : 'コンテンツを選択'}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {clickedPosition && (
-            <p className="text-sm text-muted-foreground">
-              位置: {clickedPosition.lat.toFixed(5)}, {clickedPosition.lng.toFixed(5)}
-            </p>
+          {currentPosition && (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-muted-foreground">
+                位置: {currentPosition.lat.toFixed(5)}, {currentPosition.lng.toFixed(5)}
+              </p>
+              {editingItem && onRequestMapReselect && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onRequestMapReselect()
+                    onOpenChange(false)
+                  }}
+                >
+                  地図から再選択
+                </Button>
+              )}
+            </div>
           )}
 
           <div className="flex flex-col gap-1">
@@ -154,7 +203,7 @@ export function ContentSelectDialog({
             キャンセル
           </Button>
           <Button onClick={handleConfirm} disabled={!canConfirm}>
-            追加
+            {editingItem ? '更新' : '追加'}
           </Button>
         </DialogFooter>
       </DialogContent>
