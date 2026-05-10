@@ -125,7 +125,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       createdAt,
     })
   } catch (e) {
-    console.error('tts route error:', e)
-    return NextResponse.json({ error: '音声生成中にエラーが発生しました' }, { status: 500 })
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('tts route error:', message)
+    return NextResponse.json({ error: '音声生成中にエラーが発生しました', detail: message }, { status: 500 })
   }
 }

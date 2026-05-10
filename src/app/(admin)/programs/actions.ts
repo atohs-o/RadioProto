@@ -75,12 +75,27 @@ export async function saveProgramAction(
       .eq('radio_program_id', programId)
 
     if (program.items.length > 0) {
+      const contentIds = [...new Set(program.items.map((item) => item.contentId))]
+      const { data: contentRows } = await adminClient
+        .from('contents')
+        .select('id, metadata')
+        .in('id', contentIds)
+
+      const activeAudioMap = new Map<string, string>()
+      for (const row of contentRows ?? []) {
+        const meta = (row.metadata ?? {}) as Record<string, unknown>
+        if (typeof meta.active_audio_file_id === 'string') {
+          activeAudioMap.set(row.id, meta.active_audio_file_id)
+        }
+      }
+
       const { error: itemsError } = await adminClient
         .from('radio_program_items')
         .insert(
           program.items.map((item, index) => ({
             radio_program_id: programId,
             content_id: item.contentId,
+            audio_file_id: activeAudioMap.get(item.contentId) ?? null,
             lat: item.position.lat,
             lng: item.position.lng,
             display_name: item.locationName,

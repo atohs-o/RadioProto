@@ -144,7 +144,7 @@ export function MapView({
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full min-h-[400px] ${className}`}
+      className={`w-full h-full min-h-[400px] isolate ${className}`}
     />
   )
 }

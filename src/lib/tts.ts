@@ -46,12 +46,10 @@ async function synthesizeChunk(
   const model = modelOverride ?? process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-tts'
   const url = buildVertexUrl(model)
 
-  const textWithStyle = TTS_CONFIG.stylePrompt
-    ? `${TTS_CONFIG.stylePrompt}\n\n${text}`
-    : text
+  const styledText = TTS_CONFIG.stylePrompt ? `${TTS_CONFIG.stylePrompt}\n\n${text}` : text
 
   const body = {
-    contents: [{ role: 'user', parts: [{ text: textWithStyle }] }],
+    contents: [{ role: 'user', parts: [{ text: styledText }] }],
     generationConfig: {
       responseModalities: ['AUDIO'],
       temperature: TTS_CONFIG.temperature,

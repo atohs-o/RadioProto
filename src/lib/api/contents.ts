@@ -47,8 +47,12 @@ export async function getContents(): Promise<Content[]> {
 
   return (data ?? []).map((row) => {
     const audioFiles = Array.isArray(row.audio_files) ? row.audio_files : []
-    const latestAudio = audioFiles[0] ?? null
-    return toContent(row as unknown as ContentRow, latestAudio as AudioFileRow | null)
+    const meta = ContentMetadataSchema.parse(row.metadata ?? {})
+    const activeId = meta.active_audio_file_id
+    const activeAudio = (activeId ? audioFiles.find((f: { id: string }) => f.id === activeId) : null)
+      ?? audioFiles[0]
+      ?? null
+    return toContent(row as unknown as ContentRow, activeAudio as AudioFileRow | null)
   })
 }
 
