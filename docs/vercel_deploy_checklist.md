@@ -6,19 +6,19 @@
 
 Settings → Environment Variables で以下を設定（全 Environment: Production / Preview / Development）
 
-| 変数名 | 必須 | 値の取得元 | 備考 |
-|---|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase → Settings → API | `https://xxxx.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase → Settings → API | anon public キー |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase → Settings → API | service_role キー（絶対に公開しない） |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | ✅ | GCP → サービスアカウント → キー JSON | 1行に圧縮した JSON 文字列（下記参照） |
-| `GCP_PROJECT_ID` | ✅ | GCP プロジェクト ID | 例: `my-project-123` |
-| `GCP_LOCATION` | ✅ | Vertex AI リージョン | `us-central1`（デフォルト） |
-| `GEMINI_TTS_MODEL` | 任意 | — | デフォルト: `gemini-2.5-flash-tts` |
-| `GEMINI_SCRIPTIFY_MODEL` | 任意 | — | デフォルト: `gemini-2.5-flash` |
-| `NEXT_PUBLIC_TRIGGER_RADIUS_M` | 任意 | — | デフォルト: `10`（GPS 判定半径 m） |
-| `NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN` | 任意 | — | デフォルト: `5`（ウェイポイントタイムアウト 分） |
-| `NEXT_PUBLIC_AUDIO_TIMEOUT_SEC` | 任意 | — | デフォルト: `120`（音声取得タイムアウト 秒） |
+| 変数名                                | 必須  | 値の取得元                     | 備考                                          |
+| ---------------------------------- | --- | ------------------------- | ------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`         | ✅   | Supabase → Settings → API | `https://xxxx.supabase.co`                  |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`    | ✅   | Supabase → Settings → API | **publishable key**（旧: anon public key）     |
+| `SUPABASE_SERVICE_ROLE_KEY`        | ✅   | Supabase → Settings → API | **secret key**（旧: service_role key）絶対に公開しない |
+| `GOOGLE_SERVICE_ACCOUNT_JSON`      | ✅   | GCP → サービスアカウント → キー JSON | 1行に圧縮した JSON 文字列（下記参照）                      |
+| `GCP_PROJECT_ID`                   | ✅   | GCP プロジェクト ID             | 例: `my-project-123`                         |
+| `GCP_LOCATION`                     | ✅   | Vertex AI リージョン           | `us-central1`（デフォルト）                        |
+| `GEMINI_TTS_MODEL`                 | 任意  | —                         | デフォルト: `gemini-2.5-flash-tts`               |
+| `GEMINI_SCRIPTIFY_MODEL`           | 任意  | —                         | デフォルト: `gemini-2.5-flash`                   |
+| `NEXT_PUBLIC_TRIGGER_RADIUS_M`     | 任意  | —                         | デフォルト: `10`（GPS 判定半径 m）                     |
+| `NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN` | 任意  | —                         | デフォルト: `5`（ウェイポイントタイムアウト 分）                 |
+| `NEXT_PUBLIC_AUDIO_TIMEOUT_SEC`    | 任意  | —                         | デフォルト: `120`（音声取得タイムアウト 秒）                  |
 
 > **`GOOGLE_SERVICE_ACCOUNT_JSON` の注意点**: Vercel は改行を含む値を扱えないため、JSON を 1 行に圧縮して貼る必要があります。
 >
