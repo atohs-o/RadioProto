@@ -45,6 +45,9 @@ CLAUDE.local.md
 ~/.claude/plans/
 .claude/local-*
 
+# Obsidian
+.obsidian/
+
 # 機密
 .env
 .env.*
