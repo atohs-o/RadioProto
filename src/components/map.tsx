@@ -26,10 +26,13 @@ export interface MapProps {
   routePoints?: { lat: number; lng: number }[]
   shapePolylines?: { points: { lat: number; lng: number }[] }[]
   stopMarkers?: { lat: number; lng: number; name: string }[]
+  highlightedStopIndex?: number | null
+  fitBoundsTarget?: { points: { lat: number; lng: number }[]; key: number } | null
   markers?: MapMarker[]
   selectedMarkerId?: string | null
   onMapClick?: (position: { lat: number; lng: number }) => void
   onMarkerClick?: (markerId: string) => void
+  onStopMarkerClick?: (index: number) => void
   showSearch?: boolean
   className?: string
 }
@@ -37,6 +40,17 @@ export interface MapProps {
 interface MapTilerFeature {
   place_name: string
   geometry: { coordinates: [number, number] }
+}
+
+function createStopIcon(num: number, fillColor: string, size: number): L.DivIcon {
+  const fontSize = size <= 20 ? 10 : 12
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;background:${fillColor};border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:${fontSize}px;font-weight:700;line-height:1;">${num}</div>`,
+    className: '',
+    iconSize: [size, size] as L.PointExpression,
+    iconAnchor: [size / 2, size / 2] as L.PointExpression,
+    tooltipAnchor: [0, -(size / 2)] as L.PointExpression,
+  })
 }
 
 function MapSearchBox({ onSelect }: { onSelect: (lat: number, lng: number) => void }) {
@@ -118,17 +132,19 @@ function MapSearchBox({ onSelect }: { onSelect: (lat: number, lng: number) => vo
   )
 }
 
-
 export function MapView({
   center,
   zoom = 14,
   routePoints = [],
   shapePolylines = [],
   stopMarkers = [],
+  highlightedStopIndex = null,
+  fitBoundsTarget = null,
   markers = [],
   selectedMarkerId,
   onMapClick,
   onMarkerClick,
+  onStopMarkerClick,
   showSearch = false,
   className = '',
 }: MapProps) {
@@ -137,7 +153,7 @@ export function MapView({
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map())
   const polylineRef = useRef<L.Polyline | null>(null)
   const shapePolylinesRef = useRef<L.Polyline[]>([])
-  const stopMarkersRef = useRef<L.CircleMarker[]>([])
+  const stopMarkersRef = useRef<L.Marker[]>([])
 
   // マップの初期化
   useEffect(() => {
@@ -163,6 +179,15 @@ export function MapView({
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // fitBounds: インポート完了後に点列のboundsに合わせる
+  useEffect(() => {
+    if (!mapRef.current || !fitBoundsTarget || fitBoundsTarget.points.length === 0) return
+    const bounds = L.latLngBounds(
+      fitBoundsTarget.points.map((p) => [p.lat, p.lng] as [number, number])
+    )
+    mapRef.current.fitBounds(bounds, { animate: false, padding: [40, 40] })
+  }, [fitBoundsTarget?.key]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // shape ポリラインの更新（routePoints より前に描画）
   useEffect(() => {
     if (!mapRef.current) return
@@ -182,25 +207,42 @@ export function MapView({
     })
   }, [shapePolylines])
 
-  // バス停マーカーの更新（グレー小円、参照レイヤー）
+  // バス停マーカーの更新（連番 divIcon、インポート時に再生成）
   useEffect(() => {
     if (!mapRef.current) return
 
     stopMarkersRef.current.forEach((m) => m.remove())
     stopMarkersRef.current = []
 
-    stopMarkers.forEach((s) => {
-      const cm = L.circleMarker([s.lat, s.lng], {
-        radius: 7,
-        color: 'white',
-        fillColor: '#78808E',
-        fillOpacity: 0.7,
-        weight: 2,
+    stopMarkers.forEach((s, i) => {
+      const isHighlighted = highlightedStopIndex === i
+      const fillColor = isHighlighted ? '#FB7342' : '#FA5012'
+      const size = isHighlighted ? 28 : 20
+
+      const marker = L.marker([s.lat, s.lng], {
+        icon: createStopIcon(i + 1, fillColor, size),
       }).addTo(mapRef.current!)
-      cm.bindPopup(s.name)
-      stopMarkersRef.current.push(cm)
+
+      // mouseover で stop_name をツールチップ表示
+      marker.bindTooltip(s.name, { direction: 'top', offset: [0, -(size / 2)] })
+
+      if (onStopMarkerClick) {
+        marker.on('click', () => onStopMarkerClick(i))
+      }
+
+      stopMarkersRef.current.push(marker)
     })
-  }, [stopMarkers])
+  }, [stopMarkers, onStopMarkerClick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ハイライト変化時のみアイコン更新（マーカー再生成なし）
+  useEffect(() => {
+    stopMarkersRef.current.forEach((marker, i) => {
+      const isHighlighted = highlightedStopIndex === i
+      const fillColor = isHighlighted ? '#FB7342' : '#FA5012'
+      const size = isHighlighted ? 28 : 20
+      marker.setIcon(createStopIcon(i + 1, fillColor, size))
+    })
+  }, [highlightedStopIndex])
 
   // ルートラインの更新
   useEffect(() => {
@@ -221,7 +263,7 @@ export function MapView({
     }
   }, [routePoints])
 
-  // マーカーの更新（circleMarker）
+  // 紐付けセットマーカーの更新（circleMarker）
   useEffect(() => {
     if (!mapRef.current) return
 

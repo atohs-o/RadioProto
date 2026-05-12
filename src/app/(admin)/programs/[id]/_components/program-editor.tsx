@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Program } from '@/lib/schemas'
 import { Button } from '@/components/ui/button'
@@ -51,6 +51,8 @@ interface EditingItemInfo {
   position: { lat: number; lng: number }
 }
 
+const DEFAULT_CENTER = { lat: 35.6918, lng: 139.7630 }
+
 export function ProgramEditor({
   program: initialProgram,
   isNew = false,
@@ -68,13 +70,20 @@ export function ProgramEditor({
   const [gtfsDialogOpen, setGtfsDialogOpen] = useState(false)
   const [shapes, setShapes] = useState<GTFSShape[]>(initialProgram.shapes ?? [])
   const [importedStops, setImportedStops] = useState<GTFSStop[]>([])
-  // ref でクロージャの stale 問題を回避（handleDialogOpenChange が isRelocating を参照するため）
+  // バス停ホバー連動
+  const [highlightedStopIndex, setHighlightedStopIndex] = useState<number | null>(null)
+  const [clickedStopIndex, setClickedStopIndex] = useState<number | null>(null)
+  // fitBounds トリガー
+  const [fitBoundsTarget, setFitBoundsTarget] = useState<{
+    points: { lat: number; lng: number }[]
+    key: number
+  } | null>(null)
+  // バス停リスト行 ref
+  const stopRowRefs = useRef<(HTMLTableRowElement | null)[]>([])
+  // ref でクロージャの stale 問題を回避
   const isRelocatingRef = useRef(false)
 
-  const mapCenter =
-    importedStops[0]
-      ? { lat: importedStops[0].lat, lng: importedStops[0].lng }
-      : program.items[0]?.position ?? { lat: 36.3006, lng: 137.8729 }
+  const mapCenter = program.items[0]?.position ?? DEFAULT_CENTER
 
   const markers: MapMarker[] = program.items.map((item) => ({
     id: item.id,
@@ -82,6 +91,15 @@ export function ProgramEditor({
     label: item.locationName,
     color: 'blue',
   }))
+
+  // クリックされたバス停行にスクロール
+  useEffect(() => {
+    if (clickedStopIndex === null) return
+    stopRowRefs.current[clickedStopIndex]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    })
+  }, [clickedStopIndex])
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -95,13 +113,30 @@ export function ProgramEditor({
     router.push('/programs')
   }
 
-  const handleStopsImport = (stops: GTFSStop[]) => {
+  const handleStopsImport = useCallback((stops: GTFSStop[]) => {
     setImportedStops(stops)
-  }
+    setClickedStopIndex(null)
+    if (stops.length > 0) {
+      setFitBoundsTarget({
+        points: stops.map((s) => ({ lat: s.lat, lng: s.lng })),
+        key: Date.now(),
+      })
+    }
+  }, [])
 
-  const handleShapesImport = (imported: GTFSShape[]) => {
+  const handleShapesImport = useCallback((imported: GTFSShape[]) => {
     setShapes(imported)
-  }
+    if (imported.length > 0) {
+      const allPoints = imported.flatMap((s) => s.points)
+      if (allPoints.length > 0) {
+        setFitBoundsTarget({ points: allPoints, key: Date.now() })
+      }
+    }
+  }, [])
+
+  const handleStopMarkerClick = useCallback((index: number) => {
+    setClickedStopIndex(index)
+  }, [])
 
   const handleDeleteItem = (itemId: string) => {
     setProgram((prev) => ({
@@ -202,6 +237,8 @@ export function ProgramEditor({
           routePoints={program.routePoints}
           shapePolylines={shapes.map((s) => ({ points: s.points }))}
           stopMarkers={importedStops.map((s) => ({ lat: s.lat, lng: s.lng, name: s.stopName }))}
+          highlightedStopIndex={highlightedStopIndex}
+          fitBoundsTarget={fitBoundsTarget}
           markers={markers}
           selectedMarkerId={selectedMarkerId}
           showSearch
@@ -219,6 +256,7 @@ export function ProgramEditor({
           onMarkerClick={(id) =>
             setSelectedMarkerId((prev) => (prev === id ? null : id))
           }
+          onStopMarkerClick={handleStopMarkerClick}
           className="rounded-lg border"
         />
       </div>
@@ -301,7 +339,7 @@ export function ProgramEditor({
                 <div>
                   <CardTitle className="text-base">バス停一覧</CardTitle>
                   <CardDescription className="mt-1">
-                    stops.txt からインポートしたバス停（地図上に灰色で表示）
+                    stops.txt からインポートしたバス停（地図上に番号付きで表示）
                   </CardDescription>
                 </div>
                 {importedStops.length > 0 && (
@@ -309,7 +347,11 @@ export function ProgramEditor({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 shrink-0 text-muted-foreground"
-                    onClick={() => setImportedStops([])}
+                    onClick={() => {
+                      setImportedStops([])
+                      setClickedStopIndex(null)
+                      setHighlightedStopIndex(null)
+                    }}
                   >
                     <X className="h-4 w-4" />
                     <span className="sr-only">バス停をクリア</span>
@@ -333,7 +375,19 @@ export function ProgramEditor({
                     </TableHeader>
                     <TableBody>
                       {importedStops.map((stop, i) => (
-                        <TableRow key={i}>
+                        <TableRow
+                          key={i}
+                          ref={(el) => { stopRowRefs.current[i] = el }}
+                          className={[
+                            'cursor-default transition-colors',
+                            i === clickedStopIndex ? 'bg-muted' : '',
+                            i === highlightedStopIndex && i !== clickedStopIndex
+                              ? 'bg-muted/50'
+                              : '',
+                          ].join(' ')}
+                          onMouseEnter={() => setHighlightedStopIndex(i)}
+                          onMouseLeave={() => setHighlightedStopIndex(null)}
+                        >
                           <TableCell className="pl-4 text-muted-foreground tabular-nums text-sm">
                             {i + 1}
                           </TableCell>
