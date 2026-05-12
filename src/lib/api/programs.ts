@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Program } from '@/lib/schemas'
 
 const RouteGeometryPointSchema = z.object({ lat: z.number(), lng: z.number() })
+const ShapePointSchema = z.object({ lat: z.number(), lng: z.number(), seq: z.number() })
 
 function parseRouteGeometry(geometry: unknown): { lat: number; lng: number }[] {
   const result = z.array(RouteGeometryPointSchema).safeParse(geometry)
@@ -68,7 +69,8 @@ export async function getProgram(id: string): Promise<Program | null> {
         contents ( title ),
         audio_files ( duration_seconds )
       ),
-      routes ( geometry )
+      routes ( geometry ),
+      radio_program_shapes ( shape_id, points )
     `)
     .eq('id', id)
     .maybeSingle()
@@ -95,11 +97,18 @@ export async function getProgram(id: string): Promise<Program | null> {
       }
     })
 
+  const rawShapes = Array.isArray(data.radio_program_shapes) ? data.radio_program_shapes : []
+  const shapes = rawShapes.map((s) => ({
+    shapeId: s.shape_id,
+    points: z.array(ShapePointSchema).catch([]).parse(s.points),
+  }))
+
   return {
     id: data.id,
     name: data.name,
     enabled: data.is_active,
     routePoints,
+    shapes,
     items,
     updatedAt: data.updated_at,
   }

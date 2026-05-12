@@ -46,6 +46,63 @@ export function parseGTFSStops(text: string): GTFSParseResult {
   return { stops, skipped }
 }
 
+export interface GTFSShape {
+  shapeId: string
+  points: { lat: number; lng: number; seq: number }[]
+}
+
+export interface GTFSShapesParseResult {
+  shapes: GTFSShape[]
+  skipped: number
+}
+
+export function parseGTFSShapes(text: string): GTFSShapesParseResult {
+  const lines = text.trim().split(/\r?\n/)
+  if (lines.length < 2) return { shapes: [], skipped: 0 }
+
+  const stripQuotes = (s: string) => s.trim().replace(/^"|"$/g, '')
+  const headers = lines[0].split(',').map(stripQuotes)
+
+  const idIdx = headers.findIndex((h) => h === 'shape_id')
+  const latIdx = headers.findIndex((h) => h === 'shape_pt_lat')
+  const lonIdx = headers.findIndex((h) => h === 'shape_pt_lon')
+  const seqIdx = headers.findIndex((h) => h === 'shape_pt_sequence')
+
+  if (idIdx === -1 || latIdx === -1 || lonIdx === -1 || seqIdx === -1) {
+    const missing = ['shape_id', 'shape_pt_lat', 'shape_pt_lon', 'shape_pt_sequence']
+      .filter((col) => !headers.includes(col))
+      .join('・')
+    throw new Error(`必須列が見つかりません: ${missing}`)
+  }
+
+  const shapeMap = new Map<string, { lat: number; lng: number; seq: number }[]>()
+  let skipped = 0
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(stripQuotes)
+    const shapeId = cols[idIdx] ?? ''
+    const lat = parseFloat(cols[latIdx] ?? '')
+    const lng = parseFloat(cols[lonIdx] ?? '')
+    const seq = parseInt(cols[seqIdx] ?? '', 10)
+
+    if (!shapeId || isNaN(lat) || isNaN(lng) || isNaN(seq)) {
+      skipped++
+      continue
+    }
+
+    const pts = shapeMap.get(shapeId) ?? []
+    pts.push({ lat, lng, seq })
+    shapeMap.set(shapeId, pts)
+  }
+
+  const shapes: GTFSShape[] = Array.from(shapeMap.entries()).map(([shapeId, pts]) => ({
+    shapeId,
+    points: pts.sort((a, b) => a.seq - b.seq),
+  }))
+
+  return { shapes, skipped }
+}
+
 export async function importRouteCSV(file: File): Promise<{ lat: number; lng: number }[]> {
   const text = await file.text()
   const lines = text.trim().split(/\r?\n/)

@@ -637,6 +637,38 @@ export type Database = {
           },
         ]
       }
+      radio_program_shapes: {
+        Row: {
+          created_at: string | null
+          id: string
+          points: Json
+          program_id: string
+          shape_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          points: Json
+          program_id: string
+          shape_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          points?: Json
+          program_id?: string
+          shape_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "radio_program_shapes_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "radio_programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       radio_programs: {
         Row: {
           created_at: string

@@ -24,6 +24,8 @@ export interface MapProps {
   center: { lat: number; lng: number }
   zoom?: number
   routePoints?: { lat: number; lng: number }[]
+  shapePolylines?: { points: { lat: number; lng: number }[] }[]
+  stopMarkers?: { lat: number; lng: number; name: string }[]
   markers?: MapMarker[]
   selectedMarkerId?: string | null
   onMapClick?: (position: { lat: number; lng: number }) => void
@@ -116,35 +118,13 @@ function MapSearchBox({ onSelect }: { onSelect: (lat: number, lng: number) => vo
   )
 }
 
-function createColoredIcon(color: string): L.Icon {
-  const colorMap: Record<string, string> = {
-    blue: '#5B7DBE',
-    red: '#D86A6A',
-    green: '#4D9B6F',
-    gray: '#78808E',
-  }
-
-  const fillColor = colorMap[color] || colorMap.blue
-
-  const svgIcon = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="24" height="36">
-      <path fill="${fillColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z"/>
-      <circle fill="#fff" cx="12" cy="12" r="5"/>
-    </svg>
-  `
-
-  return L.icon({
-    iconUrl: `data:image/svg+xml;base64,${btoa(svgIcon)}`,
-    iconSize: [24, 36],
-    iconAnchor: [12, 36],
-    popupAnchor: [0, -36],
-  })
-}
 
 export function MapView({
   center,
   zoom = 14,
   routePoints = [],
+  shapePolylines = [],
+  stopMarkers = [],
   markers = [],
   selectedMarkerId,
   onMapClick,
@@ -154,8 +134,10 @@ export function MapView({
 }: MapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const markersRef = useRef<Map<string, L.Marker>>(new Map())
+  const markersRef = useRef<Map<string, L.CircleMarker>>(new Map())
   const polylineRef = useRef<L.Polyline | null>(null)
+  const shapePolylinesRef = useRef<L.Polyline[]>([])
+  const stopMarkersRef = useRef<L.CircleMarker[]>([])
 
   // マップの初期化
   useEffect(() => {
@@ -181,6 +163,45 @@ export function MapView({
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // shape ポリラインの更新（routePoints より前に描画）
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    shapePolylinesRef.current.forEach((p) => p.remove())
+    shapePolylinesRef.current = []
+
+    shapePolylines.forEach((shape) => {
+      if (shape.points.length < 2) return
+      const latLngs = shape.points.map((p) => [p.lat, p.lng] as [number, number])
+      const polyline = L.polyline(latLngs, {
+        weight: 3,
+        color: '#78808E',
+        opacity: 0.7,
+      }).addTo(mapRef.current!)
+      shapePolylinesRef.current.push(polyline)
+    })
+  }, [shapePolylines])
+
+  // バス停マーカーの更新（グレー小円、参照レイヤー）
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    stopMarkersRef.current.forEach((m) => m.remove())
+    stopMarkersRef.current = []
+
+    stopMarkers.forEach((s) => {
+      const cm = L.circleMarker([s.lat, s.lng], {
+        radius: 7,
+        color: 'white',
+        fillColor: '#78808E',
+        fillOpacity: 0.7,
+        weight: 2,
+      }).addTo(mapRef.current!)
+      cm.bindPopup(s.name)
+      stopMarkersRef.current.push(cm)
+    })
+  }, [stopMarkers])
+
   // ルートラインの更新
   useEffect(() => {
     if (!mapRef.current) return
@@ -200,31 +221,34 @@ export function MapView({
     }
   }, [routePoints])
 
-  // マーカーの更新
+  // マーカーの更新（circleMarker）
   useEffect(() => {
     if (!mapRef.current) return
 
-    // 既存マーカーをクリア
     markersRef.current.forEach((marker) => marker.remove())
     markersRef.current.clear()
 
-    // 新しいマーカーを追加
     markers.forEach((m) => {
       const isSelected = m.id === selectedMarkerId
-      const color = isSelected ? 'red' : (m.color ?? 'blue')
-      const icon = createColoredIcon(color)
+      const fillColor = isSelected ? '#5B7DBE' : '#FA5012'
 
-      const marker = L.marker([m.position.lat, m.position.lng], { icon }).addTo(mapRef.current!)
+      const circleMarker = L.circleMarker([m.position.lat, m.position.lng], {
+        radius: 10,
+        color: 'white',
+        fillColor,
+        fillOpacity: 0.9,
+        weight: 2,
+      }).addTo(mapRef.current!)
 
       if (m.label) {
-        marker.bindPopup(m.label)
+        circleMarker.bindPopup(m.label)
       }
 
       if (onMarkerClick) {
-        marker.on('click', () => onMarkerClick(m.id))
+        circleMarker.on('click', () => onMarkerClick(m.id))
       }
 
-      markersRef.current.set(m.id, marker)
+      markersRef.current.set(m.id, circleMarker)
     })
   }, [markers, selectedMarkerId, onMarkerClick])
 

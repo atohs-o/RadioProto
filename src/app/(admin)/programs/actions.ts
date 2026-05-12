@@ -106,6 +106,25 @@ export async function saveProgramAction(
       if (itemsError) return { error: itemsError.message }
     }
 
+    // shapes の同期: 全件削除 → 全件挿入
+    await adminClient
+      .from('radio_program_shapes')
+      .delete()
+      .eq('program_id', programId)
+
+    if (program.shapes && program.shapes.length > 0) {
+      const { error: shapesError } = await adminClient
+        .from('radio_program_shapes')
+        .insert(
+          program.shapes.map((shape) => ({
+            program_id: programId,
+            shape_id: shape.shapeId,
+            points: shape.points as unknown as Json,
+          }))
+        )
+      if (shapesError) return { error: shapesError.message }
+    }
+
     revalidatePath('/programs')
     revalidatePath(`/programs/${programId}`)
     return { id: programId }

@@ -22,7 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { ArrowLeft, Save, Upload, Trash2, Pencil, MapPin } from 'lucide-react'
+import { ArrowLeft, Save, Trash2, Pencil, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import Map from '@/components/map/map'
@@ -30,7 +30,7 @@ import type { MapMarker } from '@/components/map/map'
 import { ContentSelectDialog } from './content-select-dialog'
 import { GtfsImportDialog } from './gtfs-import-dialog'
 import { saveProgramAction } from '../../actions'
-import { importRouteCSV, type GTFSStop } from '@/lib/csv'
+import { type GTFSStop, type GTFSShape } from '@/lib/csv'
 
 interface GeneratedContent {
   id: string
@@ -51,20 +51,13 @@ interface EditingItemInfo {
   position: { lat: number; lng: number }
 }
 
-// コンテンツ未設定のアイテム（GTFSインポート直後）を許容するドラフト型
-type ProgramItemDraft = Omit<Program['items'][number], 'contentId'> & {
-  contentId?: string
-}
-type ProgramDraft = Omit<Program, 'items'> & { items: ProgramItemDraft[] }
-
 export function ProgramEditor({
   program: initialProgram,
   isNew = false,
   generatedContents,
 }: ProgramEditorProps) {
   const router = useRouter()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [program, setProgram] = useState<ProgramDraft>(initialProgram)
+  const [program, setProgram] = useState<Program>(initialProgram)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -73,13 +66,15 @@ export function ProgramEditor({
   const [editingItem, setEditingItem] = useState<EditingItemInfo | null>(null)
   const [isRelocating, setIsRelocating] = useState(false)
   const [gtfsDialogOpen, setGtfsDialogOpen] = useState(false)
+  const [shapes, setShapes] = useState<GTFSShape[]>(initialProgram.shapes ?? [])
+  const [importedStops, setImportedStops] = useState<GTFSStop[]>([])
   // ref でクロージャの stale 問題を回避（handleDialogOpenChange が isRelocating を参照するため）
   const isRelocatingRef = useRef(false)
 
   const mapCenter =
-    program.routePoints[0] ??
-    program.items[0]?.position ??
-    { lat: 36.3006, lng: 137.8729 }
+    importedStops[0]
+      ? { lat: importedStops[0].lat, lng: importedStops[0].lng }
+      : program.items[0]?.position ?? { lat: 36.3006, lng: 137.8729 }
 
   const markers: MapMarker[] = program.items.map((item) => ({
     id: item.id,
@@ -91,13 +86,7 @@ export function ProgramEditor({
   const handleSave = async () => {
     setIsSaving(true)
     setSaveError(null)
-    const programToSave: Program = {
-      ...program,
-      items: program.items.filter(
-        (i): i is Program['items'][number] => !!i.contentId
-      ),
-    }
-    const result = await saveProgramAction(programToSave, isNew)
+    const result = await saveProgramAction({ ...program, shapes }, isNew)
     if (result.error) {
       setSaveError(result.error)
       setIsSaving(false)
@@ -106,41 +95,12 @@ export function ProgramEditor({
     router.push('/programs')
   }
 
-  const handleCSVImport = () => {
-    fileInputRef.current?.click()
+  const handleStopsImport = (stops: GTFSStop[]) => {
+    setImportedStops(stops)
   }
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      const points = await importRouteCSV(file)
-      setProgram((prev) => ({ ...prev, routePoints: points }))
-    } catch {
-      // エラーは無視（UIへのフィードバックはPhase 2で改善）
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }
-
-  const handleGtfsImport = (stops: GTFSStop[]) => {
-    setProgram((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        ...stops.map((stop) => ({
-          id: crypto.randomUUID(),
-          position: { lat: stop.lat, lng: stop.lng },
-          locationName: stop.stopName,
-          contentId: undefined,
-          contentTitle: '',
-          audioDurationSec: 0,
-        })),
-      ],
-    }))
+  const handleShapesImport = (imported: GTFSShape[]) => {
+    setShapes(imported)
   }
 
   const handleDeleteItem = (itemId: string) => {
@@ -181,7 +141,7 @@ export function ProgramEditor({
     if (!item) return
     setEditingItem({
       id: item.id,
-      contentId: item.contentId ?? '',
+      contentId: item.contentId,
       locationName: item.locationName,
       position: item.position,
     })
@@ -208,14 +168,12 @@ export function ProgramEditor({
   const handleRequestMapReselect = () => {
     isRelocatingRef.current = true
     setIsRelocating(true)
-    // ダイアログは onOpenChange(false) 側で閉じられる（二重呼び出し回避）
   }
 
   const handleDialogOpenChange = (open: boolean) => {
     setDialogOpen(open)
     if (!open) {
       if (isRelocatingRef.current) {
-        // 地図再選択待ち中はクリーンアップしない
         return
       }
       setEditingItem(null)
@@ -242,6 +200,8 @@ export function ProgramEditor({
           center={mapCenter}
           zoom={14}
           routePoints={program.routePoints}
+          shapePolylines={shapes.map((s) => ({ points: s.points }))}
+          stopMarkers={importedStops.map((s) => ({ lat: s.lat, lng: s.lng, name: s.stopName }))}
           markers={markers}
           selectedMarkerId={selectedMarkerId}
           showSearch
@@ -314,42 +274,77 @@ export function ProgramEditor({
             </CardContent>
           </Card>
 
-          {/* 路線データ */}
+          {/* GTFSインポート */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">路線データ</CardTitle>
+              <CardTitle className="text-base">GTFSインポート</CardTitle>
               <CardDescription>
-                CSVファイルから路線座標をインポートします
+                shapes.txt で路線形状、stops.txt でバス停をインポートします
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleCSVImport}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                路線データCSVインポート
-              </Button>
               <Button
                 variant="outline"
                 className="w-full"
                 onClick={() => setGtfsDialogOpen(true)}
               >
                 <MapPin className="mr-2 h-4 w-4" />
-                バス停 stops.txt インポート
+                GTFSデータをインポート
               </Button>
-              {program.routePoints.length > 0 && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {program.routePoints.length}点の座標が登録されています
+            </CardContent>
+          </Card>
+
+          {/* バス停一覧 */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">バス停一覧</CardTitle>
+                  <CardDescription className="mt-1">
+                    stops.txt からインポートしたバス停（地図上に灰色で表示）
+                  </CardDescription>
+                </div>
+                {importedStops.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground"
+                    onClick={() => setImportedStops([])}
+                  >
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">バス停をクリア</span>
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {importedStops.length === 0 ? (
+                <p className="px-4 pb-4 text-sm text-muted-foreground">
+                  バス停がインポートされていません
                 </p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pl-4 w-10">#</TableHead>
+                        <TableHead>停留所名</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importedStops.map((stop, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="pl-4 text-muted-foreground tabular-nums text-sm">
+                            {i + 1}
+                          </TableCell>
+                          <TableCell className="font-medium text-sm">
+                            {stop.stopName}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -397,9 +392,7 @@ export function ProgramEditor({
                           {item.locationName}
                         </TableCell>
                         <TableCell className="max-w-[150px] truncate text-sm text-muted-foreground">
-                          {item.contentTitle || (
-                            <span className="text-xs text-amber-600">未設定</span>
-                          )}
+                          {item.contentTitle}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">
                           {formatDuration(item.audioDurationSec)}
@@ -444,13 +437,6 @@ export function ProgramEditor({
             </CardContent>
           </Card>
 
-          {program.items.some((i) => !i.contentId) && (
-            <p className="text-sm text-amber-600">
-              コンテンツ未設定のアイテムは保存されません（
-              {program.items.filter((i) => !i.contentId).length}件）
-            </p>
-          )}
-
           {saveError && (
             <p className="text-sm text-destructive">{saveError}</p>
           )}
@@ -470,7 +456,8 @@ export function ProgramEditor({
       <GtfsImportDialog
         open={gtfsDialogOpen}
         onOpenChange={setGtfsDialogOpen}
-        onImport={handleGtfsImport}
+        onImport={handleStopsImport}
+        onImportShapes={handleShapesImport}
       />
 
       <ContentSelectDialog
