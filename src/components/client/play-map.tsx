@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { publicEnv } from '@/lib/env'
 
 interface RoutePoint {
   lat: number
@@ -117,8 +118,8 @@ export default function PlayMap({
       zoomControl={false}
     >
       <TileLayer
-        attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        attribution='© MapTiler © OpenStreetMap contributors'
+        url={`https://api.maptiler.com/maps/bright/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`}
       />
 
       {/* 路線ライン */}

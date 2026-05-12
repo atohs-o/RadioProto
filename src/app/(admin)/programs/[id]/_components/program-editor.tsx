@@ -213,6 +213,7 @@ export function ProgramEditor({
           routePoints={program.routePoints}
           markers={markers}
           selectedMarkerId={selectedMarkerId}
+          showSearch
           onMapClick={(pos) => {
             if (isRelocatingRef.current && editingItem) {
               isRelocatingRef.current = false

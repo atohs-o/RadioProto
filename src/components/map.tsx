@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { publicEnv } from '@/lib/env'
 
 // Leafletのデフォルトアイコンの修正
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl
@@ -27,7 +28,92 @@ export interface MapProps {
   selectedMarkerId?: string | null
   onMapClick?: (position: { lat: number; lng: number }) => void
   onMarkerClick?: (markerId: string) => void
+  showSearch?: boolean
   className?: string
+}
+
+interface MapTilerFeature {
+  place_name: string
+  geometry: { coordinates: [number, number] }
+}
+
+function MapSearchBox({ onSelect }: { onSelect: (lat: number, lng: number) => void }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<MapTilerFeature[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSearch = async () => {
+    if (!query.trim() || isLoading) return
+    setIsLoading(true)
+    try {
+      const res = await fetch(
+        `https://api.maptiler.com/geocoding/${encodeURIComponent(query.trim())}.json?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}&language=ja&limit=5`
+      )
+      const data: { features: MapTilerFeature[] } = await res.json()
+      setResults(data.features)
+      setShowDropdown(true)
+    } catch {
+      // ネットワークエラー時はドロップダウンを閉じたまま
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="absolute top-2 right-2 z-[1000] w-72">
+      <div className="flex overflow-hidden rounded-md shadow-md">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          placeholder="地名・施設名で検索"
+          className="flex-1 border-0 bg-white px-3 py-1.5 text-sm outline-none"
+        />
+        <button
+          onClick={handleSearch}
+          disabled={isLoading}
+          className="border-l bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+        >
+          {isLoading ? '…' : '検索'}
+        </button>
+      </div>
+      {showDropdown && results.length > 0 && (
+        <ul className="mt-1 max-h-60 divide-y divide-gray-100 overflow-y-auto rounded-md bg-white shadow-md">
+          {results.map((r, i) => (
+            <li key={i}>
+              <button
+                className="w-full px-3 py-2 text-left text-sm [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden hover:bg-gray-50"
+                onClick={() => {
+                  onSelect(r.geometry.coordinates[1], r.geometry.coordinates[0])
+                  setShowDropdown(false)
+                }}
+              >
+                {r.place_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showDropdown && results.length === 0 && !isLoading && (
+        <div className="mt-1 rounded-md bg-white px-3 py-2 text-sm text-gray-500 shadow-md">
+          結果が見つかりませんでした
+        </div>
+      )}
+    </div>
+  )
 }
 
 function createColoredIcon(color: string): L.Icon {
@@ -63,6 +149,7 @@ export function MapView({
   selectedMarkerId,
   onMapClick,
   onMarkerClick,
+  showSearch = false,
   className = '',
 }: MapProps) {
   const mapRef = useRef<L.Map | null>(null)
@@ -76,8 +163,8 @@ export function MapView({
 
     mapRef.current = L.map(containerRef.current).setView([center.lat, center.lng], zoom)
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+    L.tileLayer(`https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`, {
+      attribution: '© MapTiler © OpenStreetMap contributors',
     }).addTo(mapRef.current)
 
     if (onMapClick) {
@@ -142,10 +229,14 @@ export function MapView({
   }, [markers, selectedMarkerId, onMarkerClick])
 
   return (
-    <div
-      ref={containerRef}
-      className={`w-full h-full min-h-[400px] isolate ${className}`}
-    />
+    <div className={`relative w-full h-full min-h-[400px] isolate ${className}`}>
+      <div ref={containerRef} className="w-full h-full" />
+      {showSearch && (
+        <MapSearchBox
+          onSelect={(lat, lng) => mapRef.current?.setView([lat, lng], 15)}
+        />
+      )}
+    </div>
   )
 }
 
