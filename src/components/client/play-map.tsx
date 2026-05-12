@@ -119,7 +119,7 @@ export default function PlayMap({
     >
       <TileLayer
         attribution='© <a href="https://www.maptiler.com/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
-        url={`https://api.maptiler.com/maps/${publicEnv.NEXT_PUBLIC_MAPTILER_STYLE_CLIENT ?? publicEnv.NEXT_PUBLIC_MAPTILER_STYLE ?? ''}/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`}
+        url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`}
       />
 
       {/* 路線ライン */}
