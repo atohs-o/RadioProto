@@ -163,8 +163,9 @@ export function MapView({
 
     mapRef.current = L.map(containerRef.current).setView([center.lat, center.lng], zoom)
 
-    L.tileLayer(`https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`, {
-      attribution: '© MapTiler © OpenStreetMap contributors',
+    const style = publicEnv.NEXT_PUBLIC_MAPTILER_STYLE_ADMIN ?? publicEnv.NEXT_PUBLIC_MAPTILER_STYLE ?? ''
+    L.tileLayer(`https://api.maptiler.com/maps/${style}/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`, {
+      attribution: '© <a href="https://www.maptiler.com/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
     }).addTo(mapRef.current)
 
     if (onMapClick) {

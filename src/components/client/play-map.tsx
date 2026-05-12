@@ -118,8 +118,8 @@ export default function PlayMap({
       zoomControl={false}
     >
       <TileLayer
-        attribution='© MapTiler © OpenStreetMap contributors'
-        url={`https://api.maptiler.com/maps/bright/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`}
+        attribution='© <a href="https://www.maptiler.com/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+        url={`https://api.maptiler.com/maps/${publicEnv.NEXT_PUBLIC_MAPTILER_STYLE_CLIENT ?? publicEnv.NEXT_PUBLIC_MAPTILER_STYLE ?? ''}/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`}
       />
 
       {/* 路線ライン */}
