@@ -15,7 +15,7 @@ export async function getPrograms(): Promise<Program[]> {
   const { data, error } = await supabase
     .from('radio_programs')
     .select(`
-      id, name, is_active, updated_at,
+      id, name, is_active, group_id, updated_at,
       radio_program_items (
         id, lat, lng, display_name, content_id, sequence,
         contents ( title ),
@@ -51,6 +51,7 @@ export async function getPrograms(): Promise<Program[]> {
       id: row.id,
       name: row.name,
       enabled: row.is_active,
+      groupId: row.group_id ?? undefined,
       routePoints,
       items,
       updatedAt: row.updated_at,
@@ -63,7 +64,7 @@ export async function getProgram(id: string): Promise<Program | null> {
   const { data, error } = await supabase
     .from('radio_programs')
     .select(`
-      id, name, is_active, updated_at,
+      id, name, is_active, group_id, updated_at,
       radio_program_items (
         id, lat, lng, display_name, content_id, sequence,
         contents ( title ),
@@ -107,6 +108,7 @@ export async function getProgram(id: string): Promise<Program | null> {
     id: data.id,
     name: data.name,
     enabled: data.is_active,
+    groupId: data.group_id ?? undefined,
     routePoints,
     shapes,
     items,

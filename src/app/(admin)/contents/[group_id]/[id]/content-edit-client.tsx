@@ -27,7 +27,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { PageHeader } from '@/components/common/page-header'
 import { AudioGenerationModal } from '@/components/admin/audio-generation-modal'
 import type { Content, ScriptVersion, AudioFileInfo } from '@/lib/schemas/content'
-import { createContentAction, updateContentAction, setActiveAudioAction } from '../actions'
+import { createContentAction, updateContentAction, setActiveAudioAction } from '../../actions'
 
 const SCRIPT_BYTE_LIMIT = 4000
 
@@ -66,9 +66,10 @@ function formatDate(iso: string): string {
 
 interface Props {
   content: Content | null
+  groupId: string
 }
 
-export function ContentEditClient({ content }: Props) {
+export function ContentEditClient({ content, groupId }: Props) {
   const router = useRouter()
   const isNew = content === null
 
@@ -86,7 +87,6 @@ export function ContentEditClient({ content }: Props) {
   const [audioStatus, setAudioStatus] = useState<Content['audioStatus']>(
     content?.audioStatus ?? 'pending'
   )
-  const [audioUrl, setAudioUrl] = useState<string | undefined>(content?.audioUrl)
   const [scriptVersions, setScriptVersions] = useState<ScriptVersion[]>(
     content?.scriptVersions ?? []
   )
@@ -131,7 +131,7 @@ export function ContentEditClient({ content }: Props) {
     } finally {
       setGeneratingScript(false)
     }
-  }, [sourceText, content?.id])
+  }, [sourceText, content])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -146,14 +146,14 @@ export function ContentEditClient({ content }: Props) {
     } as const
 
     if (isNew) {
-      const result = await createContentAction(formData)
+      const result = await createContentAction(formData, groupId)
       if ('error' in result && result.error) {
         setSaveError(result.error)
         setSaving(false)
         return
       }
       if ('id' in result && result.id) {
-        router.push(`/contents/${result.id}`)
+        router.push(`/contents/${groupId}/${result.id}`)
         return
       }
     } else {
@@ -163,13 +163,12 @@ export function ContentEditClient({ content }: Props) {
         setSaving(false)
         return
       }
-      router.push('/contents')
+      router.push(`/contents/${groupId}`)
     }
-  }, [isNew, content, title, sourceText, scriptText, tags, router])
+  }, [isNew, content, title, sourceText, scriptText, tags, router, groupId])
 
   const handleAudioComplete = useCallback((audioFile: AudioFileInfo) => {
     setAudioStatus('generated')
-    setAudioUrl(audioFile.url)
     setAllAudioFiles((prev) => [audioFile, ...prev].slice(0, 3))
     setActiveAudioFileId(audioFile.id)
   }, [])
@@ -177,9 +176,8 @@ export function ContentEditClient({ content }: Props) {
   const handleSetActiveAudio = useCallback(async (audioFile: AudioFileInfo) => {
     if (!content?.id) return
     setActiveAudioFileId(audioFile.id)
-    setAudioUrl(audioFile.url)
     await setActiveAudioAction(content.id, audioFile.id)
-  }, [content?.id])
+  }, [content])
 
   const scriptByteLength = getByteLength(scriptText)
   const isOverLimit = scriptByteLength > SCRIPT_BYTE_LIMIT
@@ -189,7 +187,7 @@ export function ContentEditClient({ content }: Props) {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/contents">
+          <Link href={`/contents/${groupId}`}>
             <ArrowLeft className="size-4" />
           </Link>
         </Button>
@@ -275,7 +273,6 @@ export function ContentEditClient({ content }: Props) {
                 )}
               </Field>
 
-              {/* 台本生成履歴 */}
               {scriptVersions.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">
@@ -317,7 +314,7 @@ export function ContentEditClient({ content }: Props) {
 
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" asChild>
-                  <Link href="/contents">キャンセル</Link>
+                  <Link href={`/contents/${groupId}`}>キャンセル</Link>
                 </Button>
                 <Button
                   onClick={handleSave}
@@ -343,7 +340,6 @@ export function ContentEditClient({ content }: Props) {
               <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
             </div>
 
-            {/* 生成ボタン + モデル選択 */}
             <div className="space-y-2">
               {isNew ? (
                 <p className="text-sm text-muted-foreground">保存後に音声を生成できます。</p>
@@ -386,7 +382,6 @@ export function ContentEditClient({ content }: Props) {
               )}
             </div>
 
-            {/* 音声ファイル一覧（最大3件） */}
             {allAudioFiles.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">

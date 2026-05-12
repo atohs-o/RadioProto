@@ -12,6 +12,7 @@ export const contentSchema = z.object({
   scriptText: z.string().optional(),
   audioUrl: z.string().optional(),
   audioDurationSec: z.number().optional(),
+  groupId: z.string().uuid().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -21,6 +22,7 @@ export const programSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   enabled: z.boolean(),
+  groupId: z.string().uuid().optional(),
   routePoints: z.array(z.object({ lat: z.number(), lng: z.number() })),
   items: z.array(z.object({
     id: z.string().uuid(),

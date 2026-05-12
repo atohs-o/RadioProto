@@ -1,28 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { PlusIcon, PencilIcon, TrashIcon, SearchIcon } from 'lucide-react'
-import type { Content } from '@/lib/types'
+import { useRouter } from 'next/navigation'
+import { PlusIcon, SearchIcon, FolderIcon, PencilIcon, TrashIcon } from 'lucide-react'
+import type { ContentGroup } from '@/lib/schemas/content-group'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,291 +26,319 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { deleteContentAction } from './actions'
-
-const SOURCE_TYPE_LABELS: Record<Content['sourceType'], string> = {
-  polling: 'ポーリング',
-  manual: '手動',
-  url: 'URL',
-}
-
-const AUDIO_STATUS_LABELS: Record<Content['audioStatus'], string> = {
-  pending: '未生成',
-  generating: '生成中',
-  generated: '生成済み',
-  error: 'エラー',
-}
-
-const AUDIO_STATUS_VARIANTS: Record<Content['audioStatus'], 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  pending: 'secondary',
-  generating: 'outline',
-  generated: 'default',
-  error: 'destructive',
-}
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  createContentGroupAction,
+  updateContentGroupAction,
+  deleteContentGroupAction,
+} from './actions'
 
 interface ContentsPageClientProps {
-  contents: Content[]
+  groups: ContentGroup[]
 }
 
-export function ContentsPageClient({ contents }: ContentsPageClientProps) {
+export function ContentsPageClient({ groups: initialGroups }: ContentsPageClientProps) {
+  const router = useRouter()
+  const [groups, setGroups] = useState(initialGroups)
   const [searchQuery, setSearchQuery] = useState('')
-  const [sourceFilter, setSourceFilter] = useState<string>('all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [tagFilter, setTagFilter] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<ContentGroup | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredContents = contents.filter((content) => {
+  const allTags = Array.from(new Set(groups.flatMap((g) => g.tags)))
+
+  const filteredGroups = groups.filter((g) => {
     const matchesSearch =
-      searchQuery === '' ||
-      content.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      content.summary?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesSource = sourceFilter === 'all' || content.sourceType === sourceFilter
-    const matchesStatus = statusFilter === 'all' || content.audioStatus === statusFilter
-    return matchesSearch && matchesSource && matchesStatus
+      searchQuery === '' || g.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesTag = tagFilter === '' || g.tags.includes(tagFilter)
+    return matchesSearch && matchesTag
   })
 
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const handleCreate = async (name: string, description: string, tagsCsv: string) => {
+    const result = await createContentGroupAction({ name, description, tags_csv: tagsCsv })
+    if ('error' in result && result.error) {
+      setError(result.error)
+      return
+    }
+    setCreateOpen(false)
+    router.refresh()
+  }
+
+  const handleUpdate = async (id: string, name: string, description: string, tagsCsv: string) => {
+    const result = await updateContentGroupAction(id, { name, description, tags_csv: tagsCsv })
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setEditTarget(null)
+    router.refresh()
+  }
 
   const handleDelete = async (id: string) => {
-    const result = await deleteContentAction(id)
-    if (result.error) setDeleteError(result.error)
+    const result = await deleteContentGroupAction(id)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setGroups((prev) => prev.filter((g) => g.id !== id))
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {deleteError && (
+      {error && (
         <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {deleteError}
+          {error}
         </div>
       )}
-      {/* ヘッダー部 */}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Button asChild>
-          <Link href="/contents/new">
-            <PlusIcon className="mr-2 size-4" />
-            新規作成
-          </Link>
+        <Button onClick={() => setCreateOpen(true)}>
+          <PlusIcon className="mr-2 size-4" />
+          新規グループ作成
         </Button>
       </div>
 
-      {/* フィルター部 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="キーワード検索..."
+            placeholder="グループ名を検索..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
-        <div className="flex gap-2">
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="ソース" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべてのソース</SelectItem>
-              <SelectItem value="polling">ポーリング</SelectItem>
-              <SelectItem value="manual">手動</SelectItem>
-              <SelectItem value="url">URL</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="ステータス" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべてのステータス</SelectItem>
-              <SelectItem value="pending">未生成</SelectItem>
-              <SelectItem value="generating">生成中</SelectItem>
-              <SelectItem value="generated">生成済み</SelectItem>
-              <SelectItem value="error">エラー</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* モバイル: カード表示 */}
-      <div className="flex flex-col gap-4 md:hidden">
-        {filteredContents.map((content) => (
-          <ContentCard
-            key={content.id}
-            content={content}
-            onDelete={handleDelete}
-          />
-        ))}
-        {filteredContents.length === 0 && (
-          <p className="py-8 text-center text-muted-foreground">
-            コンテンツが見つかりません
-          </p>
+        {allTags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <Badge
+              variant={tagFilter === '' ? 'default' : 'outline'}
+              className="cursor-pointer"
+              onClick={() => setTagFilter('')}
+            >
+              すべて
+            </Badge>
+            {allTags.map((tag) => (
+              <Badge
+                key={tag}
+                variant={tagFilter === tag ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setTagFilter(tag)}
+              >
+                {tag}
+              </Badge>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* デスクトップ: テーブル表示 */}
-      <div className="hidden md:block">
-        <ContentsTable contents={filteredContents} onDelete={handleDelete} />
-      </div>
+      {filteredGroups.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed py-16 text-center">
+          <FolderIcon className="size-10 text-muted-foreground" />
+          <p className="text-muted-foreground">グループがありません</p>
+          <Button variant="outline" onClick={() => setCreateOpen(true)}>
+            <PlusIcon className="mr-2 size-4" />
+            グループを作成する
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredGroups.map((group) => (
+            <GroupCard
+              key={group.id}
+              group={group}
+              onClick={() => router.push(`/contents/${group.id}`)}
+              onEdit={() => setEditTarget(group)}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      )}
+
+      <GroupFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="新規グループ作成"
+        onSubmit={(name, description, tagsCsv) => handleCreate(name, description, tagsCsv)}
+      />
+
+      {editTarget && (
+        <GroupFormDialog
+          open={!!editTarget}
+          onOpenChange={(open) => { if (!open) setEditTarget(null) }}
+          title="グループを編集"
+          initialName={editTarget.name}
+          initialDescription={editTarget.description ?? ''}
+          initialTagsCsv={editTarget.tags.join(', ')}
+          onSubmit={(name, description, tagsCsv) =>
+            handleUpdate(editTarget.id, name, description, tagsCsv)
+          }
+        />
+      )}
     </div>
   )
 }
 
-function ContentCard({
-  content,
+function GroupCard({
+  group,
+  onClick,
+  onEdit,
   onDelete,
 }: {
-  content: Content
+  group: ContentGroup
+  onClick: () => void
+  onEdit: () => void
   onDelete: (id: string) => void
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card
+      className="cursor-pointer transition-shadow hover:shadow-md"
+      onClick={onClick}
+    >
+      <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base font-semibold leading-tight">
-            {content.title}
+            {group.name}
           </CardTitle>
-          <div className="flex shrink-0 gap-1">
-            <Button variant="ghost" size="icon" asChild className="size-8">
-              <Link href={`/contents/${content.id}`}>
-                <PencilIcon className="size-4" />
-                <span className="sr-only">編集</span>
-              </Link>
+          <div
+            className="flex shrink-0 gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={onEdit}
+            >
+              <PencilIcon className="size-4" />
+              <span className="sr-only">編集</span>
             </Button>
-            <DeleteButton id={content.id} onDelete={onDelete} />
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-destructive hover:text-destructive"
+                >
+                  <TrashIcon className="size-4" />
+                  <span className="sr-only">削除</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>グループを削除しますか？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    グループを削除します。コンテンツは削除されません（グループ未設定になります）。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => onDelete(group.id)}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    削除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        {content.summary && (
+        {group.description && (
           <p className="mb-3 text-sm text-muted-foreground line-clamp-2">
-            {content.summary}
+            {group.description}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">
-            {SOURCE_TYPE_LABELS[content.sourceType]}
-          </Badge>
-          <Badge variant={AUDIO_STATUS_VARIANTS[content.audioStatus]}>
-            {AUDIO_STATUS_LABELS[content.audioStatus]}
-          </Badge>
-          {content.radioRegistered && (
-            <Badge variant="secondary">登録済み</Badge>
-          )}
+          <Badge variant="secondary">{group.contentCount} コンテンツ</Badge>
+          {group.tags.map((tag) => (
+            <Badge key={tag} variant="outline">{tag}</Badge>
+          ))}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {new Date(group.createdAt).toLocaleDateString('ja-JP')}
+        </p>
       </CardContent>
     </Card>
   )
 }
 
-function ContentsTable({
-  contents,
-  onDelete,
+function GroupFormDialog({
+  open,
+  onOpenChange,
+  title,
+  initialName = '',
+  initialDescription = '',
+  initialTagsCsv = '',
+  onSubmit,
 }: {
-  contents: Content[]
-  onDelete: (id: string) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  initialName?: string
+  initialDescription?: string
+  initialTagsCsv?: string
+  onSubmit: (name: string, description: string, tagsCsv: string) => void
 }) {
-  return (
-    <div className="rounded-lg border">
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead>タイトル</TableHead>
-            <TableHead className="w-24">ソース</TableHead>
-            <TableHead className="w-24">音声</TableHead>
-            <TableHead className="w-24">ラジオ登録</TableHead>
-            <TableHead className="w-28">更新日</TableHead>
-            <TableHead className="w-20 sticky right-0 bg-background">操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {contents.map((content) => (
-            <TableRow key={content.id}>
-              <TableCell className="overflow-hidden">
-                <div className="flex flex-col min-w-0">
-                  <span className="font-medium truncate">{content.title}</span>
-                  {content.summary && (
-                    <span className="text-sm text-muted-foreground truncate">
-                      {content.summary}
-                    </span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">
-                  {SOURCE_TYPE_LABELS[content.sourceType]}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge variant={AUDIO_STATUS_VARIANTS[content.audioStatus]}>
-                  {AUDIO_STATUS_LABELS[content.audioStatus]}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                {content.radioRegistered ? (
-                  <Badge variant="secondary">登録済み</Badge>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {content.updatedAt}
-              </TableCell>
-              <TableCell className="sticky right-0 bg-background">
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" asChild className="size-8">
-                    <Link href={`/contents/${content.id}`}>
-                      <PencilIcon className="size-4" />
-                      <span className="sr-only">編集</span>
-                    </Link>
-                  </Button>
-                  <DeleteButton id={content.id} onDelete={onDelete} />
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-          {contents.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center">
-                コンテンツが見つかりません
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
+  const [name, setName] = useState(initialName)
+  const [description, setDescription] = useState(initialDescription)
+  const [tagsCsv, setTagsCsv] = useState(initialTagsCsv)
 
-function DeleteButton({
-  id,
-  onDelete,
-}: {
-  id: string
-  onDelete: (id: string) => void
-}) {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    onSubmit(name.trim(), description.trim(), tagsCsv.trim())
+  }
+
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive">
-          <TrashIcon className="size-4" />
-          <span className="sr-only">削除</span>
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>コンテンツを削除しますか？</AlertDialogTitle>
-          <AlertDialogDescription>
-            この操作は取り消せません。コンテンツとそれに関連するデータが完全に削除されます。
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>キャンセル</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => onDelete(id)}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            削除
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="group-name">グループ名 *</Label>
+            <Input
+              id="group-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例: 観光スポット案内"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="group-description">説明</Label>
+            <Textarea
+              id="group-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="グループの説明（任意）"
+              rows={3}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="group-tags">タグ（カンマ区切り）</Label>
+            <Input
+              id="group-tags"
+              value={tagsCsv}
+              onChange={(e) => setTagsCsv(e.target.value)}
+              placeholder="例: 観光, 案内, 春"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              キャンセル
+            </Button>
+            <Button type="submit" disabled={!name.trim()}>
+              保存
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

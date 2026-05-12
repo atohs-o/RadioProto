@@ -3,18 +3,18 @@ import { getContentById } from '@/lib/api/contents'
 import { ContentEditClient } from './content-edit-client'
 
 interface Props {
-  params: Promise<{ id: string }>
+  params: Promise<{ group_id: string; id: string }>
 }
 
 export default async function ContentPage({ params }: Props) {
-  const { id } = await params
+  const { group_id, id } = await params
 
   if (id === 'new') {
-    return <ContentEditClient content={null} />
+    return <ContentEditClient content={null} groupId={group_id} />
   }
 
   const content = await getContentById(id)
   if (!content) notFound()
 
-  return <ContentEditClient content={content} />
+  return <ContentEditClient content={content} groupId={group_id} />
 }

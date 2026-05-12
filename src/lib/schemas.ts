@@ -24,6 +24,7 @@ export const programSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   enabled: z.boolean(),
+  groupId: z.string().uuid().optional(),
   routePoints: z.array(z.object({ lat: z.number(), lng: z.number() })),
   shapes: z.array(programShapeSchema).optional(),
   items: z.array(z.object({

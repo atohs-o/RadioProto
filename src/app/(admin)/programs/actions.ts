@@ -23,6 +23,7 @@ export async function saveProgramAction(
           name: program.name,
           program_type: 'route_bus',
           is_active: program.enabled,
+          group_id: program.groupId ?? null,
           updated_at: new Date().toISOString(),
         })
         .select('id')
@@ -37,6 +38,7 @@ export async function saveProgramAction(
         .update({
           name: program.name,
           is_active: program.enabled,
+          group_id: program.groupId ?? null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', programId)

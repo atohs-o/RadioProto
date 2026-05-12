@@ -28,7 +28,7 @@ const navItems = [
   {
     label: 'コンテンツ',
     items: [
-      { title: 'コンテンツ一覧', href: '/contents', icon: FileText },
+      { title: '音声コンテンツ', href: '/contents', icon: FileText },
       { title: 'ラジオ番組', href: '/programs', icon: Radio },
       { title: 'ポーリングサイト', href: '/polling-sites', icon: Globe },
     ],

@@ -1,8 +1,7 @@
-import { getContents } from '@/lib/api/contents'
+import { getContentGroups } from '@/lib/api/content-groups'
 import { ContentsPageClient } from './contents-page-client'
 
 export default async function ContentsPage() {
-  const contents = await getContents()
-
-  return <ContentsPageClient contents={contents} />
+  const groups = await getContentGroups()
+  return <ContentsPageClient groups={groups} />
 }

@@ -31,6 +31,7 @@ function toContent(
     scriptText: row.script,
     audioUrl: signedAudioUrl ?? undefined,
     audioDurationSec: audioFile?.duration_seconds ?? undefined,
+    groupId: row.group_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -107,7 +108,7 @@ export async function getContentById(id: string): Promise<Content | null> {
   }
 }
 
-export async function createContent(form: ContentForm): Promise<Content> {
+export async function createContent(form: ContentForm, groupId?: string): Promise<Content> {
   const validated = ContentFormSchema.parse(form)
   const supabase = await createClient()
 
@@ -128,12 +129,34 @@ export async function createContent(form: ContentForm): Promise<Content> {
       source_type: validated.source_type,
       summary: validated.source_text ?? null,
       metadata,
+      group_id: groupId ?? null,
     })
     .select()
     .single()
 
   if (error) throw new Error(error.message)
   return toContent(data)
+}
+
+export async function getContentsByGroupId(groupId: string): Promise<Content[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('contents')
+    .select('*, audio_files(id, storage_path, duration_seconds)')
+    .eq('group_id', groupId)
+    .order('updated_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).map((row) => {
+    const audioFiles = Array.isArray(row.audio_files) ? row.audio_files : []
+    const meta = ContentMetadataSchema.parse(row.metadata ?? {})
+    const activeId = meta.active_audio_file_id
+    const activeAudio = (activeId ? audioFiles.find((f: { id: string }) => f.id === activeId) : null)
+      ?? audioFiles[0]
+      ?? null
+    return toContent(row as unknown as ContentRow, activeAudio as AudioFileRow | null)
+  })
 }
 
 export async function updateContent(

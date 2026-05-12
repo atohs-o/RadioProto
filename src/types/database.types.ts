@@ -160,6 +160,36 @@ export type Database = {
           },
         ]
       }
+      content_groups: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          tags: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          tags?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          tags?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contents: {
         Row: {
           category_tag: string | null
@@ -205,10 +235,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "contents_group_id_fkey"
+            foreignKeyName: "contents_content_group_id_fkey"
             columns: ["group_id"]
             isOneToOne: false
-            referencedRelation: "groups"
+            referencedRelation: "content_groups"
             referencedColumns: ["id"]
           },
           {
@@ -699,10 +729,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "radio_programs_group_id_fkey"
+            foreignKeyName: "radio_programs_content_group_id_fkey"
             columns: ["group_id"]
             isOneToOne: false
-            referencedRelation: "groups"
+            referencedRelation: "content_groups"
             referencedColumns: ["id"]
           },
         ]

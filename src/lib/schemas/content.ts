@@ -32,6 +32,7 @@ export const contentSchema = z.object({
   scriptVersions: z.array(ScriptVersionSchema).optional(),
   allAudioFiles: z.array(AudioFileInfoSchema).optional(),
   activeAudioFileId: z.string().optional(),
+  groupId: z.string().uuid().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })

@@ -31,17 +31,27 @@ import { ContentSelectDialog } from './content-select-dialog'
 import { GtfsImportDialog } from './gtfs-import-dialog'
 import { saveProgramAction } from '../../actions'
 import { type GTFSStop, type GTFSShape } from '@/lib/csv'
+import type { ContentGroup } from '@/lib/schemas/content-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface GeneratedContent {
   id: string
   title: string
   audioDurationSec?: number
+  groupId?: string
 }
 
 interface ProgramEditorProps {
   program: Program
   isNew?: boolean
   generatedContents: GeneratedContent[]
+  contentGroups: ContentGroup[]
 }
 
 interface EditingItemInfo {
@@ -57,6 +67,7 @@ export function ProgramEditor({
   program: initialProgram,
   isNew = false,
   generatedContents,
+  contentGroups,
 }: ProgramEditorProps) {
   const router = useRouter()
   const [program, setProgram] = useState<Program>(initialProgram)
@@ -82,6 +93,10 @@ export function ProgramEditor({
   const stopRowRefs = useRef<(HTMLTableRowElement | null)[]>([])
   // ref でクロージャの stale 問題を回避
   const isRelocatingRef = useRef(false)
+
+  const effectiveContents = program.groupId
+    ? generatedContents.filter((c) => c.groupId === program.groupId)
+    : generatedContents
 
   const mapCenter = program.items[0]?.position ?? DEFAULT_CENTER
 
@@ -297,6 +312,31 @@ export function ProgramEditor({
                 </Field>
 
                 <Field>
+                  <FieldLabel htmlFor="program-group">音声グループ</FieldLabel>
+                  <Select
+                    value={program.groupId ?? 'none'}
+                    onValueChange={(v) =>
+                      setProgram((prev) => ({
+                        ...prev,
+                        groupId: v === 'none' ? undefined : v,
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="program-group">
+                      <SelectValue placeholder="グループを選択（任意）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">グループなし（全コンテンツ表示）</SelectItem>
+                      {contentGroups.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field>
                   <div className="flex items-center justify-between">
                     <Label htmlFor="program-enabled">有効/無効</Label>
                     <Switch
@@ -337,7 +377,7 @@ export function ProgramEditor({
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-base">バス停一覧</CardTitle>
+                  <CardTitle className="text-base">バス停</CardTitle>
                   <CardDescription className="mt-1">
                     stops.txt からインポートしたバス停（地図上に番号付きで表示）
                   </CardDescription>
@@ -403,10 +443,10 @@ export function ProgramEditor({
             </CardContent>
           </Card>
 
-          {/* 紐付けセット一覧 */}
+          {/* 音声コンテンツ */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">紐付けセット一覧</CardTitle>
+              <CardTitle className="text-base">音声コンテンツ</CardTitle>
               <CardDescription>
                 地図をクリックしてピンを追加し、コンテンツと紐付けます
               </CardDescription>
@@ -518,7 +558,7 @@ export function ProgramEditor({
         open={dialogOpen}
         onOpenChange={handleDialogOpenChange}
         clickedPosition={pendingPosition}
-        contents={generatedContents}
+        contents={effectiveContents}
         editingItem={editingItem}
         onConfirm={handleAddItem}
         onUpdate={handleUpdateItem}
