@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { PlusIcon, SearchIcon, FolderIcon, PencilIcon, TrashIcon } from 'lucide-react'
 import type { ContentGroup } from '@/lib/schemas/content-group'
@@ -42,6 +42,10 @@ export function ContentsPageClient({ groups: initialGroups }: ContentsPageClient
   const router = useRouter()
   const [groups, setGroups] = useState(initialGroups)
   const [searchQuery, setSearchQuery] = useState('')
+
+  useEffect(() => {
+    setGroups(initialGroups)
+  }, [initialGroups])
   const [tagFilter, setTagFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ContentGroup | null>(null)
@@ -82,7 +86,7 @@ export function ContentsPageClient({ groups: initialGroups }: ContentsPageClient
       setError(result.error)
       return
     }
-    setGroups((prev) => prev.filter((g) => g.id !== id))
+    router.refresh()
   }
 
   return (
