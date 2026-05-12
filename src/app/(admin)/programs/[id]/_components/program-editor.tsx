@@ -29,6 +29,7 @@ import Map from '@/components/map/map'
 import type { MapMarker } from '@/components/map/map'
 import { ContentSelectDialog } from './content-select-dialog'
 import { GtfsImportDialog } from './gtfs-import-dialog'
+import { SimulationPanel } from './simulation-panel'
 import { saveProgramAction } from '../../actions'
 import { type GTFSStop, type GTFSShape } from '@/lib/csv'
 import type { ContentGroup } from '@/lib/schemas/content-group'
@@ -80,6 +81,7 @@ export function ProgramEditor({
   const [isRelocating, setIsRelocating] = useState(false)
   const [gtfsDialogOpen, setGtfsDialogOpen] = useState(false)
   const [shapes, setShapes] = useState<GTFSShape[]>(initialProgram.shapes ?? [])
+  const [simPosition, setSimPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [importedStops, setImportedStops] = useState<GTFSStop[]>([])
   // バス停ホバー連動
   const [highlightedStopIndex, setHighlightedStopIndex] = useState<number | null>(null)
@@ -239,42 +241,55 @@ export function ProgramEditor({
 
   return (
     <div className="flex h-full">
-      {/* 左側: 地図エリア (60%) */}
-      <div className="relative w-[60%] h-full p-4">
-        {isRelocating && (
-          <div className="absolute top-8 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow">
-            地図をクリックして新しい位置を選択してください
-          </div>
-        )}
-        <Map
-          center={mapCenter}
-          zoom={14}
-          routePoints={program.routePoints}
-          shapePolylines={shapes.map((s) => ({ points: s.points }))}
-          stopMarkers={importedStops.map((s) => ({ lat: s.lat, lng: s.lng, name: s.stopName }))}
-          highlightedStopIndex={highlightedStopIndex}
-          fitBoundsTarget={fitBoundsTarget}
-          markers={markers}
-          selectedMarkerId={selectedMarkerId}
-          triggerRadiusM={Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')}
-          showSearch
-          onMapClick={(pos) => {
-            if (isRelocatingRef.current && editingItem) {
-              isRelocatingRef.current = false
-              setIsRelocating(false)
-              setEditingItem((prev) => (prev ? { ...prev, position: pos } : null))
-              setDialogOpen(true)
-            } else {
-              setPendingPosition(pos)
-              setDialogOpen(true)
-            }
-          }}
-          onMarkerClick={(id) =>
-            setSelectedMarkerId((prev) => (prev === id ? null : id))
-          }
-          onStopMarkerClick={handleStopMarkerClick}
-          className="rounded-lg border"
+      {/* 左側: シミュレーションパネル + 地図エリア (60%) */}
+      <div className="flex flex-col w-[60%] h-full gap-2 p-4">
+        <SimulationPanel
+          items={program.items.map((item) => ({
+            id: item.id,
+            position: item.position,
+            locationName: item.locationName,
+            audioFileId: item.audioFileId,
+          }))}
+          shapes={shapes}
+          onPositionChange={setSimPosition}
         />
+        <div className="relative flex-1 min-h-0">
+          {isRelocating && (
+            <div className="absolute top-4 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground shadow">
+              地図をクリックして新しい位置を選択してください
+            </div>
+          )}
+          <Map
+            center={mapCenter}
+            zoom={14}
+            routePoints={program.routePoints}
+            shapePolylines={shapes.map((s) => ({ points: s.points }))}
+            stopMarkers={importedStops.map((s) => ({ lat: s.lat, lng: s.lng, name: s.stopName }))}
+            highlightedStopIndex={highlightedStopIndex}
+            fitBoundsTarget={fitBoundsTarget}
+            markers={markers}
+            selectedMarkerId={selectedMarkerId}
+            triggerRadiusM={Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')}
+            simulationPosition={simPosition}
+            showSearch
+            onMapClick={(pos) => {
+              if (isRelocatingRef.current && editingItem) {
+                isRelocatingRef.current = false
+                setIsRelocating(false)
+                setEditingItem((prev) => (prev ? { ...prev, position: pos } : null))
+                setDialogOpen(true)
+              } else {
+                setPendingPosition(pos)
+                setDialogOpen(true)
+              }
+            }}
+            onMarkerClick={(id) =>
+              setSelectedMarkerId((prev) => (prev === id ? null : id))
+            }
+            onStopMarkerClick={handleStopMarkerClick}
+            className="h-full rounded-lg border"
+          />
+        </div>
       </div>
 
       {/* 右側: 設定パネル (40%) */}
@@ -476,7 +491,11 @@ export function ProgramEditor({
                     program.items.map((item) => (
                       <TableRow
                         key={item.id}
-                        className={`cursor-pointer ${item.id === selectedMarkerId ? 'bg-muted' : ''}`}
+                        className={[
+                          'cursor-pointer',
+                          item.id === selectedMarkerId ? 'bg-muted' : '',
+                          !item.audioFileId ? 'opacity-60' : '',
+                        ].join(' ')}
                         onClick={() =>
                           setSelectedMarkerId((prev) =>
                             prev === item.id ? null : item.id
@@ -486,8 +505,11 @@ export function ProgramEditor({
                         <TableCell className="pl-4 font-medium">
                           {item.locationName}
                         </TableCell>
-                        <TableCell className="max-w-[150px] truncate text-sm text-muted-foreground">
-                          {item.contentTitle}
+                        <TableCell className="max-w-[150px] text-sm text-muted-foreground">
+                          <div className="truncate">{item.contentTitle}</div>
+                          {!item.audioFileId && (
+                            <div className="text-xs text-amber-600">音声未生成</div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">
                           {formatDuration(item.audioDurationSec)}

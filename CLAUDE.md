@@ -78,6 +78,16 @@ getServerEnv()       // サーバー専用シークレット（Server Component 
 
 `getServerEnv()` を `'use client'` コンポーネントや `NEXT_PUBLIC_` 経由で使わない。
 
+**`publicEnv` に含まれない `NEXT_PUBLIC_*` 変数**（クライアントコンポーネントで `process.env.NEXT_PUBLIC_*` を直読みする）:
+
+| 変数 | デフォルト | 用途 |
+|---|---|---|
+| `NEXT_PUBLIC_TRIGGER_RADIUS_M` | `10` | GPS 近接判定半径（m） |
+| `NEXT_PUBLIC_AUDIO_TIMEOUT_SEC` | `120` | 音声取得タイムアウト（秒） |
+| `NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN` | `5` | ウェイポイント通過タイムアウト（分） |
+
+これらは `publicEnv` スキーマに含まれていないため、追加する際は `env.ts` の `publicSchema` に定義してから `publicEnv.NEXT_PUBLIC_*` で参照する。それまでは `Number(process.env.NEXT_PUBLIC_XXX ?? 'default')` パターンを使う。
+
 ### 3-3. 認証の2系統
 
 ```
@@ -93,6 +103,22 @@ getServerEnv()       // サーバー専用シークレット（Server Component 
 
 詳細は `.claude/rules/client-playback.md` を参照（車内クライアントフロー・音声経路・revalidatePath）。
 
+### 3-4. スキーマ定義の二重構造（重要）
+
+`@/lib/schemas` という import パスは **`src/lib/schemas.ts`（フラットファイル）** に解決される。
+`src/lib/schemas/index.ts` はディレクトリ index だが、TypeScript のモジュール解決でフラットファイルが優先されるため **`@/lib/schemas` からは参照されない**。
+
+```
+src/lib/schemas.ts          ← @/lib/schemas の実体。Program・Content・PollingSite を export
+src/lib/schemas/content.ts  ← @/lib/schemas/content の実体。getContents() が返す Content（リッチ版）
+src/lib/schemas/index.ts    ← 使われていない（schemas.ts と内容が重複）
+src/lib/types.ts            ← 車内クライアント含む共通型（Content の簡易版・Program）
+```
+
+`Program` 型を変更するときは **`src/lib/schemas.ts` を編集する**。`schemas/index.ts` を編集しても無効。
+
+`Content` 型は `schemas/content.ts`（getContents が返すリッチ版）と `types.ts`（簡易版）の 2 箇所に存在する。サーバー側 API 層は `schemas/content.ts` を使う。
+
 ---
 
 ## 4. ディレクトリ構成（主要部分）
@@ -102,23 +128,30 @@ src/
 ├── app/
 │   ├── (admin)/          # 管理画面（Supabase Auth 必須）
 │   │   ├── contents/
-│   │   ├── programs/     # 番組・ルート・紐付けセット
+│   │   │   ├── page.tsx                   # グループ一覧
+│   │   │   ├── [group_id]/page.tsx        # グループ内コンテンツ一覧
+│   │   │   └── [group_id]/[id]/page.tsx   # コンテンツ編集（idは UUID or "new"）
+│   │   ├── programs/     # 番組・ルート・音声コンテンツ紐付け
 │   │   ├── polling-sites/
 │   │   └── buses/
 │   ├── (client)/client/  # 車内クライアント（デバイストークン認証）
 │   └── api/
 │       ├── admin/        # 管理用 API（tts, scriptify）
 │       └── client/       # 車内クライアント用 API（auth, program, audio, trip, location, playback-event）
+│                         # audio/[id]: X-Device-Token 必須、署名付き URL を返す
 ├── components/
 │   ├── ui/               # shadcn/ui（直接編集しない）
 │   ├── admin/
 │   ├── client/
 │   ├── common/
 │   └── map.tsx           # Leaflet MapView（map/map.tsx が dynamic import ラッパー）
+│                         # MapProps.triggerRadiusM で近接判定半径円を描画
 ├── lib/
-│   ├── api/              # サーバー側データ取得（getContents, getProgram 等）
+│   ├── api/              # サーバー側データ取得（getContents, getProgram, getContentGroups 等）
 │   ├── supabase/         # server.ts / admin.ts / client.ts
-│   ├── schemas/          # zod スキーマ（content.ts / client.ts / polling-sites.ts）
+│   ├── schemas.ts        # @/lib/schemas の実体（Program・Content・PollingSite）
+│   ├── schemas/          # content.ts / content-group.ts / client.ts / polling-sites.ts
+│   ├── types.ts          # 共通型（Content 簡易版・Program・GpsStatus 等）
 │   ├── env.ts
 │   ├── geo.ts            # haversineDistance / smoothGps
 │   ├── tts.ts            # Vertex AI TTS 呼び出し
@@ -137,6 +170,10 @@ supabase/
     ├── ping-keep-alive/  # 3日に1回 SELECT 1（auto-pause 対策）
     └── _shared/          # 共通ユーティリティ（gemini.ts, strip-html.ts）
 ```
+
+### コンテンツ・グループ関係
+
+`content_groups` テーブルが音声コンテンツを論理的にまとめる。`contents.group_id` と `radio_programs.group_id` がそれぞれ `content_groups.id` を参照する（マルチテナント用の旧 `groups` テーブルとは別物）。番組にグループを設定すると、ピン配置ダイアログでそのグループのコンテンツのみ表示される。
 
 ---
 

@@ -34,6 +34,7 @@ export const programSchema = z.object({
     contentId: z.string().uuid(),
     contentTitle: z.string(),
     audioDurationSec: z.number(),
+    audioFileId: z.string().uuid().nullable().optional(),
   })),
   updatedAt: z.string(),
 })

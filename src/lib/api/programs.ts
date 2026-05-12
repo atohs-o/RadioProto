@@ -66,7 +66,7 @@ export async function getProgram(id: string): Promise<Program | null> {
     .select(`
       id, name, is_active, group_id, updated_at,
       radio_program_items (
-        id, lat, lng, display_name, content_id, sequence,
+        id, lat, lng, display_name, content_id, sequence, audio_file_id,
         contents ( title ),
         audio_files ( duration_seconds )
       ),
@@ -95,6 +95,7 @@ export async function getProgram(id: string): Promise<Program | null> {
         contentId: item.content_id,
         contentTitle: (content as { title?: string } | null)?.title ?? '',
         audioDurationSec: (audioFile as { duration_seconds?: number | null } | null)?.duration_seconds ?? 0,
+        audioFileId: item.audio_file_id ?? undefined,
       }
     })
 

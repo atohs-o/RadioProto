@@ -61,8 +61,11 @@ alwaysApply: false
 
 | Action | revalidatePath |
 |---|---|
-| `updateContentAction` | `/contents`, `/contents/${id}` |
-| `setActiveAudioAction` | `/contents/${id}` |
+| `updateContentAction` | `revalidatePath('/contents', 'layout')` |
+| `setActiveAudioAction` | `revalidatePath('/contents', 'layout')` |
 | `saveProgramAction` | `/programs`, `/programs/${id}` |
+| `createContentGroupAction` 等 | `revalidatePath('/contents', 'layout')` |
+
+コンテンツルーティングが `/contents/[group_id]/[id]` 構造に変わったため、単純な `revalidatePath('/contents')` では子ルートが無効化されない。`'layout'` オプションで `/contents` 配下を一括無効化する。
 
 音声生成（`/api/admin/tts`）は API Route のため `revalidatePath` を呼べない。管理画面でページ再読み込みが必要な場合がある。

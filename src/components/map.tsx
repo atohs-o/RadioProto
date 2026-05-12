@@ -31,6 +31,7 @@ export interface MapProps {
   markers?: MapMarker[]
   selectedMarkerId?: string | null
   triggerRadiusM?: number
+  simulationPosition?: { lat: number; lng: number } | null
   onMapClick?: (position: { lat: number; lng: number }) => void
   onMarkerClick?: (markerId: string) => void
   onStopMarkerClick?: (index: number) => void
@@ -173,6 +174,7 @@ export function MapView({
   markers = [],
   selectedMarkerId,
   triggerRadiusM = 10,
+  simulationPosition = null,
   onMapClick,
   onMarkerClick,
   onStopMarkerClick,
@@ -186,6 +188,7 @@ export function MapView({
   const polylineRef = useRef<L.Polyline | null>(null)
   const shapePolylinesRef = useRef<L.Polyline[]>([])
   const stopMarkersRef = useRef<L.Marker[]>([])
+  const simMarkerRef = useRef<L.CircleMarker | null>(null)
 
   // マップの初期化
   useEffect(() => {
@@ -336,6 +339,28 @@ export function MapView({
       markersRef.current.set(m.id, marker)
     })
   }, [markers, selectedMarkerId, triggerRadiusM, onMarkerClick])
+
+  // シミュレーション現在位置マーカー（青い丸）
+  useEffect(() => {
+    if (!mapRef.current) return
+    if (simulationPosition) {
+      if (simMarkerRef.current) {
+        simMarkerRef.current.setLatLng([simulationPosition.lat, simulationPosition.lng])
+      } else {
+        simMarkerRef.current = L.circleMarker([simulationPosition.lat, simulationPosition.lng], {
+          radius: 8,
+          color: '#1D4ED8',
+          weight: 2,
+          fillColor: '#3B82F6',
+          fillOpacity: 0.9,
+          interactive: false,
+        }).addTo(mapRef.current)
+      }
+    } else if (simMarkerRef.current) {
+      simMarkerRef.current.remove()
+      simMarkerRef.current = null
+    }
+  }, [simulationPosition])
 
   return (
     <div className={`relative w-full h-full min-h-[400px] isolate ${className}`}>
