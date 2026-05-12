@@ -379,7 +379,7 @@ export function GtfsImportDialog({
   onImport,
   onImportShapes,
 }: GtfsImportDialogProps) {
-  const [activeTab, setActiveTab] = useState<string>('stops')
+  const [activeTab, setActiveTab] = useState<string>('shapes')
 
   const handleClose = useCallback(
     (isOpen: boolean) => {
