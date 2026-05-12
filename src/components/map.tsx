@@ -30,6 +30,7 @@ export interface MapProps {
   fitBoundsTarget?: { points: { lat: number; lng: number }[]; key: number } | null
   markers?: MapMarker[]
   selectedMarkerId?: string | null
+  triggerRadiusM?: number
   onMapClick?: (position: { lat: number; lng: number }) => void
   onMarkerClick?: (markerId: string) => void
   onStopMarkerClick?: (index: number) => void
@@ -50,6 +51,35 @@ function createStopIcon(num: number, fillColor: string, size: number): L.DivIcon
     iconSize: [size, size] as L.PointExpression,
     iconAnchor: [size / 2, size / 2] as L.PointExpression,
     tooltipAnchor: [0, -(size / 2)] as L.PointExpression,
+  })
+}
+
+// 音声コンテンツ位置ピン（ブランドカラーの涙形ピン）
+function createContentMarkerIcon(isSelected: boolean): L.DivIcon {
+  const pinColor  = isSelected ? '#2563EB' : '#FA5012'
+  const ringColor = isSelected ? 'rgba(37,99,235,0.25)' : 'rgba(250,80,18,0.25)'
+  const size = isSelected ? 36 : 32
+  const anchorY = size - 2
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 32 40">
+    <defs>
+      <filter id="ps" x="-30%" y="-20%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="${pinColor}" flood-opacity="0.45"/>
+      </filter>
+    </defs>
+    <circle cx="16" cy="13" r="12" fill="${ringColor}" stroke="none"/>
+    <path d="M16 2C10.477 2 6 6.477 6 12C6 19.5 16 30 16 30C16 30 26 19.5 26 12C26 6.477 21.523 2 16 2Z"
+      fill="${pinColor}" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#ps)"/>
+    <circle cx="16" cy="12" r="5.5" fill="white" fill-opacity="0.92"/>
+    <text x="16" y="15.5" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="700" fill="${pinColor}">♪</text>
+  </svg>`
+
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize:   [size, Math.round(size * 1.25)] as L.PointExpression,
+    iconAnchor: [size / 2, anchorY] as L.PointExpression,
+    tooltipAnchor: [0, -(anchorY)] as L.PointExpression,
   })
 }
 
@@ -142,6 +172,7 @@ export function MapView({
   fitBoundsTarget = null,
   markers = [],
   selectedMarkerId,
+  triggerRadiusM = 10,
   onMapClick,
   onMarkerClick,
   onStopMarkerClick,
@@ -150,7 +181,8 @@ export function MapView({
 }: MapProps) {
   const mapRef = useRef<L.Map | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const markersRef = useRef<Map<string, L.CircleMarker>>(new Map())
+  const markersRef = useRef<Map<string, L.Marker>>(new Map())
+  const radiusCirclesRef = useRef<Map<string, L.Circle>>(new Map())
   const polylineRef = useRef<L.Polyline | null>(null)
   const shapePolylinesRef = useRef<L.Polyline[]>([])
   const stopMarkersRef = useRef<L.Marker[]>([])
@@ -263,36 +295,47 @@ export function MapView({
     }
   }, [routePoints])
 
-  // 紐付けセットマーカーの更新（circleMarker）
+  // 音声コンテンツマーカー + 近接判定半径円の更新
   useEffect(() => {
     if (!mapRef.current) return
 
     markersRef.current.forEach((marker) => marker.remove())
     markersRef.current.clear()
+    radiusCirclesRef.current.forEach((circle) => circle.remove())
+    radiusCirclesRef.current.clear()
 
     markers.forEach((m) => {
       const isSelected = m.id === selectedMarkerId
-      const fillColor = isSelected ? '#5B7DBE' : '#FA5012'
 
-      const circleMarker = L.circleMarker([m.position.lat, m.position.lng], {
-        radius: 10,
-        color: 'white',
-        fillColor,
-        fillOpacity: 0.9,
-        weight: 2,
+      // 近接判定半径を示す半透明円（ピンより先に addTo して背面に置く）
+      const radiusCircle = L.circle([m.position.lat, m.position.lng], {
+        radius: triggerRadiusM,
+        color: '#FA5012',
+        opacity: 0.4,
+        weight: 1.5,
+        fillColor: '#FA5012',
+        fillOpacity: 0.12,
+        interactive: false,
+      }).addTo(mapRef.current!)
+      radiusCirclesRef.current.set(m.id, radiusCircle)
+
+      // ブランドカラーの涙形ピン
+      const marker = L.marker([m.position.lat, m.position.lng], {
+        icon: createContentMarkerIcon(isSelected),
+        zIndexOffset: isSelected ? 100 : 0,
       }).addTo(mapRef.current!)
 
       if (m.label) {
-        circleMarker.bindPopup(m.label)
+        marker.bindTooltip(m.label, { direction: 'top', offset: [0, -30] })
       }
 
       if (onMarkerClick) {
-        circleMarker.on('click', () => onMarkerClick(m.id))
+        marker.on('click', () => onMarkerClick(m.id))
       }
 
-      markersRef.current.set(m.id, circleMarker)
+      markersRef.current.set(m.id, marker)
     })
-  }, [markers, selectedMarkerId, onMarkerClick])
+  }, [markers, selectedMarkerId, triggerRadiusM, onMarkerClick])
 
   return (
     <div className={`relative w-full h-full min-h-[400px] isolate ${className}`}>

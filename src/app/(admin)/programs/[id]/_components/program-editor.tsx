@@ -256,6 +256,7 @@ export function ProgramEditor({
           fitBoundsTarget={fitBoundsTarget}
           markers={markers}
           selectedMarkerId={selectedMarkerId}
+          triggerRadiusM={Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')}
           showSearch
           onMapClick={(pos) => {
             if (isRelocatingRef.current && editingItem) {
