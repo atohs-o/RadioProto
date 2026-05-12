@@ -10,7 +10,7 @@ import type { GTFSShape } from '@/lib/csv'
 const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')
 const PASS_THROUGH_MARGIN_M = 20
 const WAYPOINT_TIMEOUT_MIN = Number(process.env.NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN ?? '5')
-const BASE_SPEED_MPS = 5000 / 3600
+const BASE_KMH = 5
 const TICK_MS = 100
 
 type SimState = 'idle' | 'running' | 'paused'
@@ -58,7 +58,7 @@ function interpolatePosition(
 
 export function SimulationPanel({ items, shapes, onPositionChange }: SimulationPanelProps) {
   const [simState, setSimState] = useState<SimState>('idle')
-  const [speedInput, setSpeedInput] = useState('10')
+  const [speedInput, setSpeedInput] = useState('30')
   const [displaySeqIdx, setDisplaySeqIdx] = useState(0)
   const [displayStatus, setDisplayStatus] = useState<'待機中' | '移動中' | '再生中'>('待機中')
 
@@ -66,7 +66,7 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
   const pathRef = useRef<{ lat: number; lng: number }[]>([])
   const cumDistRef = useRef<number[]>([0])
   const currentDistRef = useRef(0)
-  const speedMultiplierRef = useRef(10)
+  const speedKmhRef = useRef(30)
   const seqIdxRef = useRef(0)
   const hasEnteredRadiusRef = useRef(false)
   const minDistToTargetRef = useRef(Infinity)
@@ -174,7 +174,7 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
     }
 
     setDisplayStatus('移動中')
-    const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000) / speedMultiplierRef.current
+    const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000 * BASE_KMH) / speedKmhRef.current
     waypointTimerRef.current = setTimeout(() => {
       if (!hasEnteredRadiusRef.current) advanceSeqRef.current()
     }, timeoutMs)
@@ -213,7 +213,7 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
 
     if (path.length < 2) return
 
-    const stepM = BASE_SPEED_MPS * speedMultiplierRef.current * (TICK_MS / 1000)
+    const stepM = (speedKmhRef.current / 3.6) * (TICK_MS / 1000)
     currentDistRef.current = Math.min(currentDistRef.current + stepM, totalLen)
     const newPos = interpolatePosition(path, cumDist, currentDistRef.current)
     onPositionChangeRef.current(newPos)
@@ -266,7 +266,7 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
 
     const audioItems = itemsWithAudioRef.current
     if (audioItems.length > 0) {
-      const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000) / speedMultiplierRef.current
+      const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000 * BASE_KMH) / speedKmhRef.current
       waypointTimerRef.current = setTimeout(() => {
         if (!hasEnteredRadiusRef.current) advanceSeqRef.current()
       }, timeoutMs)
@@ -297,7 +297,7 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
     const idx = seqIdxRef.current
     const audioItems = itemsWithAudioRef.current
     if (idx < audioItems.length && !hasEnteredRadiusRef.current) {
-      const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000) / speedMultiplierRef.current
+      const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000 * BASE_KMH) / speedKmhRef.current
       waypointTimerRef.current = setTimeout(() => {
         if (!hasEnteredRadiusRef.current) advanceSeqRef.current()
       }, timeoutMs)
@@ -324,11 +324,11 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
 
   const handleSpeedBlur = () => {
     const n = Number(speedInput)
-    if (isNaN(n) || n < 1 || n > 100) {
-      setSpeedInput(String(speedMultiplierRef.current))
+    if (isNaN(n) || n < 1 || n > 120) {
+      setSpeedInput(String(speedKmhRef.current))
     } else {
-      const clamped = Math.max(1, Math.min(100, Math.floor(n)))
-      speedMultiplierRef.current = clamped
+      const clamped = Math.max(1, Math.min(120, Math.floor(n)))
+      speedKmhRef.current = clamped
       setSpeedInput(String(clamped))
     }
   }
@@ -383,21 +383,21 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
         <Input
           type="number"
           min={1}
-          max={100}
+          max={120}
           value={speedInput}
           onChange={(e) => {
             const val = e.target.value
             setSpeedInput(val)
             const n = Number(val)
-            if (!isNaN(n) && n >= 1 && n <= 100) {
-              speedMultiplierRef.current = Math.floor(n)
+            if (!isNaN(n) && n >= 1 && n <= 120) {
+              speedKmhRef.current = Math.floor(n)
             }
           }}
           onBlur={handleSpeedBlur}
           disabled={simState !== 'idle'}
           className="h-8 w-16 text-center"
         />
-        <span className="text-muted-foreground">x</span>
+        <span className="text-muted-foreground">km/h</span>
       </div>
 
       {/* 再生状態 */}
