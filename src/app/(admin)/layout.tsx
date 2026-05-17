@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { FileTextIcon, RadioIcon, GlobeIcon, BusIcon } from 'lucide-react'
+import { Toaster } from '@/components/ui/sonner'
 import {
   Sidebar,
   SidebarContent,
@@ -94,6 +95,7 @@ export default function AdminLayout({
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
       </SidebarInset>
+      <Toaster richColors />
     </SidebarProvider>
   )
 }

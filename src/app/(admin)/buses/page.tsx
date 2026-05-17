@@ -388,11 +388,12 @@ function SetProgramDialog({
   programs: ProgramSummary[]
   onSuccess: () => void
 }) {
-  const [selectedProgramId, setSelectedProgramId] = useState<string>('')
+  const NONE = '__none__'
+  const [selectedProgramId, setSelectedProgramId] = useState<string>(NONE)
   const [isSaving, setIsSaving] = useState(false)
 
   const handleOpen = (nextOpen: boolean) => {
-    if (nextOpen && bus) setSelectedProgramId(bus.currentProgramId ?? '')
+    if (nextOpen && bus) setSelectedProgramId(bus.currentProgramId ?? NONE)
     onOpenChange(nextOpen)
   }
 
@@ -405,7 +406,7 @@ function SetProgramDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'update',
-          currentProgramId: selectedProgramId || null,
+          currentProgramId: selectedProgramId === NONE ? null : selectedProgramId,
         }),
       })
       if (!res.ok) throw new Error()
@@ -433,7 +434,7 @@ function SetProgramDialog({
             <SelectValue placeholder="番組を選択" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">番組なし</SelectItem>
+            <SelectItem value={NONE}>番組なし</SelectItem>
             {programs.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
