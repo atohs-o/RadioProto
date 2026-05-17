@@ -21,7 +21,9 @@ export default function WaitPage() {
   const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected')
   const [isLoading, setIsLoading] = useState(true)
   const [isClearing, setIsClearing] = useState(false)
-  const [lastTripEnd, setLastTripEnd] = useState<{ time: string; type: 'auto' | 'manual' } | null>(null)
+
+  type TripEndType = 'auto' | 'manual' | 'abnormal' | 'timeout' | 'offline' | 'completed'
+  const [lastTripEnd, setLastTripEnd] = useState<{ time: string; type: TripEndType } | null>(null)
 
   const fetchBusState = useCallback(async () => {
     const token = localStorage.getItem('deviceToken')
@@ -60,11 +62,31 @@ export default function WaitPage() {
     toast({ title: `自動終了しました（${autoEndedAt}）` })
   }, [toast])
 
+  // 4-1: 未closeトリップ検出 → 強制close
+  useEffect(() => {
+    const tripId = localStorage.getItem('current_trip_id')
+    if (!tripId) return
+    const token = localStorage.getItem('deviceToken')
+    if (token) {
+      fetch('/api/client/trip', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Device-Token': token },
+        body: JSON.stringify({ tripId }),
+      }).catch(() => {})
+    }
+    const now = new Date()
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    const endData = { time: timeStr, type: 'abnormal' as const }
+    localStorage.setItem('last_trip_ended_at', JSON.stringify(endData))
+    localStorage.removeItem('current_trip_id')
+    setLastTripEnd(endData)
+  }, [])
+
   useEffect(() => {
     const raw = localStorage.getItem('last_trip_ended_at')
     if (!raw) return
     try {
-      setLastTripEnd(JSON.parse(raw) as { time: string; type: 'auto' | 'manual' })
+      setLastTripEnd(JSON.parse(raw) as { time: string; type: TripEndType })
     } catch {
       // 壊れたデータは無視
     }
@@ -181,11 +203,18 @@ export default function WaitPage() {
                 <Badge className="bg-brand-orange text-white">手動設定中</Badge>
               )}
             </div>
-            {lastTripEnd && (
-              <p className="text-sm text-muted-foreground">
-                前回 {lastTripEnd.time} に{lastTripEnd.type === 'auto' ? '自動終了' : '手動終了'}
-              </p>
-            )}
+            {lastTripEnd && (() => {
+              const map: Record<TripEndType, { text: string; className: string }> = {
+                auto:      { text: `前回 ${lastTripEnd.time} に自動終了`,              className: 'text-sm text-muted-foreground' },
+                manual:    { text: `前回 ${lastTripEnd.time} に手動終了`,              className: 'text-sm text-muted-foreground' },
+                completed: { text: `前回 ${lastTripEnd.time} に全コンテンツ再生完了`, className: 'text-sm text-muted-foreground' },
+                abnormal:  { text: `前回 ${lastTripEnd.time} に異常終了しました`,      className: 'text-sm text-destructive' },
+                timeout:   { text: `前回 ${lastTripEnd.time} にタイムアウト終了しました`, className: 'text-sm text-yellow-500' },
+                offline:   { text: `前回 ${lastTripEnd.time} に接続断で終了しました`,  className: 'text-sm text-yellow-500' },
+              }
+              const { text, className } = map[lastTripEnd.type]
+              return <p className={className}>{text}</p>
+            })()}
           </CardContent>
         </Card>
 

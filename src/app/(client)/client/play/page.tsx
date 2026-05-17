@@ -6,11 +6,14 @@ import dynamic from 'next/dynamic'
 import { Radio, Volume2, Power } from 'lucide-react'
 import { StatusIndicator } from '@/components/client/status-indicator'
 import { OfflineBanner } from '@/components/client/offline-banner'
+import { GpsLostBanner } from '@/components/client/gps-lost-banner'
 import { PlaybackErrorDialog } from '@/components/client/playback-error-dialog'
 import { EndTripDialog } from '@/components/client/end-trip-dialog'
+import { LowProgressDialog } from '@/components/client/low-progress-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Spinner } from '@/components/ui/spinner'
+import { useToast } from '@/hooks/use-toast'
 import { haversineDistance, smoothGps } from '@/lib/geo'
 import { createLocationChannel, sendLocation } from '@/lib/realtime'
 import type { ClientProgram, ClientProgramItem } from '@/lib/schemas/client'
@@ -23,6 +26,9 @@ const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10'
 const TERMINAL_RADIUS_M = Number(process.env.NEXT_PUBLIC_TERMINAL_RADIUS_M ?? '50')
 const AUDIO_TIMEOUT_SEC = Number(process.env.NEXT_PUBLIC_AUDIO_TIMEOUT_SEC ?? '120')
 const WAYPOINT_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN ?? '5') * 60_000
+const MAX_TRIP_DURATION_MS = Number(process.env.NEXT_PUBLIC_MAX_TRIP_DURATION_MIN ?? '120') * 60_000
+const GPS_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_GPS_TIMEOUT_MIN ?? '10') * 60_000
+const OFFLINE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_OFFLINE_TIMEOUT_MIN ?? '30') * 60_000
 const PASS_THROUGH_MARGIN_M = 20
 const AUDIO_CACHE = 'autodj-audio-v1'
 const LOCATION_LOG_INTERVAL_MS = 30_000
@@ -31,6 +37,7 @@ function PlayPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const programId = searchParams.get('programId')
+  const { toast } = useToast()
 
   // UI state
   const [program, setProgram] = useState<ClientProgram | null>(null)
@@ -46,6 +53,8 @@ function PlayPageContent() {
   const [errorContentTitle, setErrorContentTitle] = useState<string | undefined>()
   const [isLoading, setIsLoading] = useState(true)
   const [initError, setInitError] = useState<string | null>(null)
+  const [showGpsLostBanner, setShowGpsLostBanner] = useState(false)
+  const [showLowProgressDialog, setShowLowProgressDialog] = useState(false)
 
   // Refs（GPSコールバックや音声コールバックで最新値を参照するため）
   const deviceTokenRef = useRef<string | null>(null)
@@ -77,8 +86,15 @@ function PlayPageContent() {
   // 自動終了管理
   const terminalItemRef = useRef<ClientProgramItem | null>(null)
   const terminateFlagRef = useRef<boolean>(false)
+  const terminateTypeRef = useRef<'auto' | 'timeout' | 'offline' | 'completed'>('auto')
   const isAutoEndingRef = useRef<boolean>(false)
-  const handleAutoEndTripRef = useRef<() => Promise<void>>(async () => {})
+  const handleAutoEndTripRef = useRef<(type: 'auto' | 'timeout' | 'offline' | 'completed') => Promise<void>>(async () => {})
+  // タイマー管理
+  const maxTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const gpsLostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 4-6: 低進捗ダイアログを1度だけ表示
+  const lowProgressShownRef = useRef(false)
 
   const recordPlaybackEvent = useCallback(
     async (
@@ -159,8 +175,9 @@ function PlayPageContent() {
     const idx = currentSequenceIdxRef.current
     if (idx >= items.length) {
       if (!terminateFlagRef.current) {
+        terminateTypeRef.current = 'completed'
         terminateFlagRef.current = true
-        if (!isPlayingRef.current) handleAutoEndTripRef.current()
+        if (!isPlayingRef.current) handleAutoEndTripRef.current('completed')
       }
       return
     }
@@ -264,7 +281,7 @@ function PlayPageContent() {
           setPlayingItemId(null)
 
           if (terminateFlagRef.current) {
-            handleAutoEndTripRef.current()
+            handleAutoEndTripRef.current(terminateTypeRef.current)
           } else {
             advanceToNextSequenceRef.current()
           }
@@ -359,7 +376,7 @@ function PlayPageContent() {
         advanceToNextSequenceRef.current()
       }
 
-      // 最終ウェイポイント接近チェック（3条件AND）
+      // 最終ウェイポイント接近チェック
       if (terminalItemRef.current && !terminateFlagRef.current) {
         const termDist = haversineDistance(smoothed, {
           lat: terminalItemRef.current.lat,
@@ -371,14 +388,17 @@ function PlayPageContent() {
           .slice(0, currentIdx)
           .filter((i) => i.audioFileId).length
 
-        if (
-          currentIdx >= 1 &&
-          totalCount > 0 &&
-          passedCount / totalCount >= 0.5 &&
-          termDist <= TERMINAL_RADIUS_M
-        ) {
-          terminateFlagRef.current = true
-          if (!isPlayingRef.current) handleAutoEndTripRef.current()
+        if (currentIdx >= 1 && totalCount > 0 && termDist <= TERMINAL_RADIUS_M) {
+          if (passedCount / totalCount >= 0.5) {
+            // 正常自動終了
+            terminateTypeRef.current = 'auto'
+            terminateFlagRef.current = true
+            if (!isPlayingRef.current) handleAutoEndTripRef.current('auto')
+          } else if (!lowProgressShownRef.current) {
+            // 4-6: 50%未満で終点接近 → ダイアログ表示
+            lowProgressShownRef.current = true
+            setShowLowProgressDialog(true)
+          }
         }
       }
     },
@@ -424,6 +444,12 @@ function PlayPageContent() {
         if (!tripRes.ok) throw new Error('運行開始に失敗しました')
         const { tripId } = (await tripRes.json()) as { tripId: string }
         tripIdRef.current = tripId
+        localStorage.setItem('current_trip_id', tripId)
+
+        // 4-2: 最大運行時間タイムアウト
+        maxTripTimerRef.current = setTimeout(() => {
+          handleAutoEndTripRef.current('timeout')
+        }, MAX_TRIP_DURATION_MS)
 
         // Realtime broadcast チャンネル接続（bus_id 取得）
         const authRes = await fetch('/api/client/auth', {
@@ -527,6 +553,9 @@ function PlayPageContent() {
       }
       if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
       if (waypointTimerRef.current) clearTimeout(waypointTimerRef.current)
+      if (maxTripTimerRef.current) clearTimeout(maxTripTimerRef.current)
+      if (gpsLostTimerRef.current) clearTimeout(gpsLostTimerRef.current)
+      if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current)
       if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
       if (audioRef.current) {
         audioRef.current.pause()
@@ -538,6 +567,39 @@ function PlayPageContent() {
       }
     }
   }, [])
+
+  // 4-3: GPS断絶タイマー（再生開始後のみ）
+  useEffect(() => {
+    if (isLoading || initError) return
+    if (gpsStatus !== 'inactive') {
+      if (gpsLostTimerRef.current) {
+        clearTimeout(gpsLostTimerRef.current)
+        gpsLostTimerRef.current = null
+      }
+      setShowGpsLostBanner(false)
+      return
+    }
+    gpsLostTimerRef.current = setTimeout(() => setShowGpsLostBanner(true), GPS_TIMEOUT_MS)
+    return () => {
+      if (gpsLostTimerRef.current) clearTimeout(gpsLostTimerRef.current)
+    }
+  }, [gpsStatus, isLoading, initError])
+
+  // 4-4: 接続断タイマー
+  useEffect(() => {
+    if (isLoading || initError) return
+    if (serverStatus !== 'disconnected') {
+      if (offlineTimerRef.current) {
+        clearTimeout(offlineTimerRef.current)
+        offlineTimerRef.current = null
+      }
+      return
+    }
+    offlineTimerRef.current = setTimeout(() => handleAutoEndTripRef.current('offline'), OFFLINE_TIMEOUT_MS)
+    return () => {
+      if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current)
+    }
+  }, [serverStatus, isLoading, initError])
 
   const handleExternalAudioToggle = useCallback(
     (checked: boolean) => {
@@ -561,7 +623,7 @@ function PlayPageContent() {
     [recordPlaybackEvent],
   )
 
-  const handleAutoEndTrip = useCallback(async () => {
+  const handleAutoEndTrip = useCallback(async (type: 'auto' | 'timeout' | 'offline' | 'completed') => {
     if (isAutoEndingRef.current) return
     isAutoEndingRef.current = true
 
@@ -569,8 +631,17 @@ function PlayPageContent() {
     const hh = String(now.getHours()).padStart(2, '0')
     const mm = String(now.getMinutes()).padStart(2, '0')
     const timeStr = `${hh}:${mm}`
-    sessionStorage.setItem('autoEndedAt', timeStr)
-    localStorage.setItem('last_trip_ended_at', JSON.stringify({ time: timeStr, type: 'auto' }))
+
+    if (type === 'timeout') {
+      toast({ title: '最大運行時間を超過したため、自動終了しました' })
+    } else if (type === 'offline') {
+      toast({ title: 'サーバーとの接続が長時間切断されたため、自動終了しました' })
+    } else {
+      sessionStorage.setItem('autoEndedAt', timeStr)
+    }
+
+    localStorage.setItem('last_trip_ended_at', JSON.stringify({ time: timeStr, type }))
+    localStorage.removeItem('current_trip_id')
 
     if (currentObjectUrlRef.current) {
       URL.revokeObjectURL(currentObjectUrlRef.current)
@@ -590,10 +661,13 @@ function PlayPageContent() {
     if (gpsWatchIdRef.current !== null) navigator.geolocation.clearWatch(gpsWatchIdRef.current)
     if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
     if (waypointTimerRef.current) clearTimeout(waypointTimerRef.current)
+    if (maxTripTimerRef.current) clearTimeout(maxTripTimerRef.current)
+    if (gpsLostTimerRef.current) clearTimeout(gpsLostTimerRef.current)
+    if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current)
     if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
 
     router.replace('/client/wait')
-  }, [router])
+  }, [router, toast])
 
   useEffect(() => {
     handleAutoEndTripRef.current = handleAutoEndTrip
@@ -630,6 +704,7 @@ function PlayPageContent() {
     const hh = String(now.getHours()).padStart(2, '0')
     const mm = String(now.getMinutes()).padStart(2, '0')
     localStorage.setItem('last_trip_ended_at', JSON.stringify({ time: `${hh}:${mm}`, type: 'manual' }))
+    localStorage.removeItem('current_trip_id')
 
     router.replace('/client/wait')
   }, [recordPlaybackEvent, router])
@@ -668,6 +743,7 @@ function PlayPageContent() {
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background dark">
       <OfflineBanner visible={serverStatus === 'disconnected'} onDismiss={() => {}} />
+      <GpsLostBanner visible={showGpsLostBanner} />
 
       <PlaybackErrorDialog
         open={showPlaybackError}
@@ -679,6 +755,12 @@ function PlayPageContent() {
       <EndTripDialog
         open={showEndTripDialog}
         onOpenChange={setShowEndTripDialog}
+        onConfirm={handleEndTrip}
+      />
+
+      <LowProgressDialog
+        open={showLowProgressDialog}
+        onOpenChange={setShowLowProgressDialog}
         onConfirm={handleEndTrip}
       />
 
