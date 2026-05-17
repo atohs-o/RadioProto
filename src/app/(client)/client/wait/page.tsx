@@ -8,16 +8,20 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 import { StatusIndicator } from '@/components/client/status-indicator'
+import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 import type { ClientBusState } from '@/lib/schemas/client'
 import type { GpsStatus, ServerStatus } from '@/lib/types'
 
 export default function WaitPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [busState, setBusState] = useState<ClientBusState | null>(null)
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('inactive')
   const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected')
   const [isLoading, setIsLoading] = useState(true)
   const [isClearing, setIsClearing] = useState(false)
+  const [lastTripEnd, setLastTripEnd] = useState<{ time: string; type: 'auto' | 'manual' } | null>(null)
 
   const fetchBusState = useCallback(async () => {
     const token = localStorage.getItem('deviceToken')
@@ -48,6 +52,23 @@ export default function WaitPage() {
   useEffect(() => {
     fetchBusState()
   }, [fetchBusState])
+
+  useEffect(() => {
+    const autoEndedAt = sessionStorage.getItem('autoEndedAt')
+    if (!autoEndedAt) return
+    sessionStorage.removeItem('autoEndedAt')
+    toast({ title: `自動終了しました（${autoEndedAt}）` })
+  }, [toast])
+
+  useEffect(() => {
+    const raw = localStorage.getItem('last_trip_ended_at')
+    if (!raw) return
+    try {
+      setLastTripEnd(JSON.parse(raw) as { time: string; type: 'auto' | 'manual' })
+    } catch {
+      // 壊れたデータは無視
+    }
+  }, [])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -148,7 +169,7 @@ export default function WaitPage() {
         </div>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-6 space-y-2">
             <div className="flex items-center gap-3">
               <p className="text-lg text-foreground">
                 現在の番組:{' '}
@@ -160,6 +181,11 @@ export default function WaitPage() {
                 <Badge className="bg-brand-orange text-white">手動設定中</Badge>
               )}
             </div>
+            {lastTripEnd && (
+              <p className="text-sm text-muted-foreground">
+                前回 {lastTripEnd.time} に{lastTripEnd.type === 'auto' ? '自動終了' : '手動終了'}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -176,12 +202,16 @@ export default function WaitPage() {
 
       <footer className="mt-6 border-t pt-6">
         <Button
-          size="lg"
-          className="h-16 w-full text-xl"
+          className={cn(
+            'min-h-[80px] w-full text-2xl font-bold transition-all',
+            canStart
+              ? 'bg-[#FA5012] text-white hover:bg-[#FA5012]/90 animate-pulse'
+              : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50',
+          )}
           disabled={!canStart}
           onClick={() => router.push(`/client/play?programId=${busState!.currentProgramId}`)}
         >
-          <Play className="mr-3 h-6 w-6" />
+          <Play className="mr-3 h-7 w-7" />
           再生開始
         </Button>
       </footer>

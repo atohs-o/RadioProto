@@ -20,6 +20,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 const PlayMap = dynamic(() => import('@/components/client/play-map'), { ssr: false })
 
 const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')
+const TERMINAL_RADIUS_M = Number(process.env.NEXT_PUBLIC_TERMINAL_RADIUS_M ?? '50')
 const AUDIO_TIMEOUT_SEC = Number(process.env.NEXT_PUBLIC_AUDIO_TIMEOUT_SEC ?? '120')
 const WAYPOINT_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN ?? '5') * 60_000
 const PASS_THROUGH_MARGIN_M = 20
@@ -73,6 +74,11 @@ function PlayPageContent() {
   const minDistanceToTargetRef = useRef<number>(Infinity)
   const waypointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const advanceToNextSequenceRef = useRef<() => void>(() => {})
+  // 自動終了管理
+  const terminalItemRef = useRef<ClientProgramItem | null>(null)
+  const terminateFlagRef = useRef<boolean>(false)
+  const isAutoEndingRef = useRef<boolean>(false)
+  const handleAutoEndTripRef = useRef<() => Promise<void>>(async () => {})
 
   const recordPlaybackEvent = useCallback(
     async (
@@ -151,7 +157,13 @@ function PlayPageContent() {
     }
 
     const idx = currentSequenceIdxRef.current
-    if (idx >= items.length) return
+    if (idx >= items.length) {
+      if (!terminateFlagRef.current) {
+        terminateFlagRef.current = true
+        if (!isPlayingRef.current) handleAutoEndTripRef.current()
+      }
+      return
+    }
 
     const nextTarget = items[idx]
 
@@ -251,7 +263,11 @@ function PlayPageContent() {
           currentPlayingItemRef.current = null
           setPlayingItemId(null)
 
-          advanceToNextSequenceRef.current()
+          if (terminateFlagRef.current) {
+            handleAutoEndTripRef.current()
+          } else {
+            advanceToNextSequenceRef.current()
+          }
         },
         { once: true },
       )
@@ -342,6 +358,29 @@ function PlayPageContent() {
         recordPlaybackEvent(target.id, 'skipped').catch(() => {})
         advanceToNextSequenceRef.current()
       }
+
+      // 最終ウェイポイント接近チェック（3条件AND）
+      if (terminalItemRef.current && !terminateFlagRef.current) {
+        const termDist = haversineDistance(smoothed, {
+          lat: terminalItemRef.current.lat,
+          lng: terminalItemRef.current.lng,
+        })
+        const currentIdx = currentSequenceIdxRef.current
+        const totalCount = sortedItemsRef.current.filter((i) => i.audioFileId).length
+        const passedCount = sortedItemsRef.current
+          .slice(0, currentIdx)
+          .filter((i) => i.audioFileId).length
+
+        if (
+          currentIdx >= 1 &&
+          totalCount > 0 &&
+          passedCount / totalCount >= 0.5 &&
+          termDist <= TERMINAL_RADIUS_M
+        ) {
+          terminateFlagRef.current = true
+          if (!isPlayingRef.current) handleAutoEndTripRef.current()
+        }
+      }
     },
     [playNextFromQueue, recordPlaybackEvent],
   )
@@ -404,6 +443,8 @@ function PlayPageContent() {
           if (b.sequence === null) return -1
           return a.sequence - b.sequence
         })
+        terminalItemRef.current =
+          sortedItemsRef.current.filter((i) => i.audioFileId).at(-1) ?? null
 
         // audioFileId のない先頭アイテムを連続スキップ
         currentSequenceIdxRef.current = 0
@@ -520,6 +561,44 @@ function PlayPageContent() {
     [recordPlaybackEvent],
   )
 
+  const handleAutoEndTrip = useCallback(async () => {
+    if (isAutoEndingRef.current) return
+    isAutoEndingRef.current = true
+
+    const now = new Date()
+    const hh = String(now.getHours()).padStart(2, '0')
+    const mm = String(now.getMinutes()).padStart(2, '0')
+    const timeStr = `${hh}:${mm}`
+    sessionStorage.setItem('autoEndedAt', timeStr)
+    localStorage.setItem('last_trip_ended_at', JSON.stringify({ time: timeStr, type: 'auto' }))
+
+    if (currentObjectUrlRef.current) {
+      URL.revokeObjectURL(currentObjectUrlRef.current)
+      currentObjectUrlRef.current = null
+    }
+    audioRef.current?.pause()
+    audioRef.current = null
+
+    if (tripIdRef.current && deviceTokenRef.current) {
+      await fetch('/api/client/trip', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Device-Token': deviceTokenRef.current },
+        body: JSON.stringify({ tripId: tripIdRef.current }),
+      }).catch((err) => console.error('自動運行終了エラー:', err))
+    }
+
+    if (gpsWatchIdRef.current !== null) navigator.geolocation.clearWatch(gpsWatchIdRef.current)
+    if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
+    if (waypointTimerRef.current) clearTimeout(waypointTimerRef.current)
+    if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
+
+    router.replace('/client/wait')
+  }, [router])
+
+  useEffect(() => {
+    handleAutoEndTripRef.current = handleAutoEndTrip
+  }, [handleAutoEndTrip])
+
   const handleEndTrip = useCallback(async () => {
     setShowEndTripDialog(false)
 
@@ -546,6 +625,11 @@ function PlayPageContent() {
     if (gpsWatchIdRef.current !== null) navigator.geolocation.clearWatch(gpsWatchIdRef.current)
     if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
     if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
+
+    const now = new Date()
+    const hh = String(now.getHours()).padStart(2, '0')
+    const mm = String(now.getMinutes()).padStart(2, '0')
+    localStorage.setItem('last_trip_ended_at', JSON.stringify({ time: `${hh}:${mm}`, type: 'manual' }))
 
     router.replace('/client/wait')
   }, [recordPlaybackEvent, router])

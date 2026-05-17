@@ -1,5 +1,6 @@
 import type { Viewport } from 'next'
 import { SWRegistrar } from '@/components/client/sw-registrar'
+import { Toaster } from '@/components/ui/toaster'
 
 export const viewport: Viewport = {
   maximumScale: 1,
@@ -15,6 +16,7 @@ export default function ClientLayout({
     <div className="min-h-screen bg-background dark">
       <SWRegistrar />
       {children}
+      <Toaster />
     </div>
   )
 }
