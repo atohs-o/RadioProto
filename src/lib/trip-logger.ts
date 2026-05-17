@@ -24,6 +24,7 @@ class TripLogger {
     eventType: TripEventType,
     metadata: Record<string, unknown> = {}
   ): void {
+    if (process.env.NEXT_PUBLIC_DEBUG_MODE !== 'true') return
     if (!tripId || !this.deviceToken) return
     fetch('/api/client/trip-events', {
       method: 'POST',
