@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import useSWR from 'swr'
-import { Plus, Eye, Ban } from 'lucide-react'
+import { Plus, Eye, Ban, Tv, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -24,15 +24,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { ErrorState } from '@/components/common/error-state'
 import type { Bus } from '@/types'
 
+type ProgramSummary = { id: string; name: string; enabled: boolean }
+
 async function fetchBuses(): Promise<Bus[]> {
   const res = await fetch('/api/admin/buses')
   if (!res.ok) throw new Error('バス一覧の取得に失敗しました')
   return res.json() as Promise<Bus[]>
+}
+
+async function fetchPrograms(): Promise<ProgramSummary[]> {
+  const res = await fetch('/api/admin/programs')
+  if (!res.ok) throw new Error('番組一覧の取得に失敗しました')
+  return res.json() as Promise<ProgramSummary[]>
 }
 
 function maskToken(token: string): string {
@@ -53,11 +68,17 @@ function formatDate(dateString: string | undefined): string {
 
 export default function BusesPage() {
   const { data: buses, isLoading, error, mutate } = useSWR<Bus[]>('buses', fetchBuses)
+  const { data: programs } = useSWR<ProgramSummary[]>('admin-programs', fetchPrograms)
+
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false)
   const [selectedToken, setSelectedToken] = useState('')
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [busToDisable, setBusToDisable] = useState<Bus | null>(null)
+  const [setProgramDialogOpen, setSetProgramDialogOpen] = useState(false)
+  const [busForProgram, setBusForProgram] = useState<Bus | null>(null)
+  const [imageUploadDialogOpen, setImageUploadDialogOpen] = useState(false)
+  const [busForImage, setBusForImage] = useState<Bus | null>(null)
 
   const handleShowToken = (token: string) => {
     setSelectedToken(token)
@@ -72,7 +93,11 @@ export default function BusesPage() {
   const handleConfirmDisable = async () => {
     if (!busToDisable) return
     try {
-      const res = await fetch(`/api/admin/buses/${busToDisable.id}`, { method: 'PATCH' })
+      const res = await fetch(`/api/admin/buses/${busToDisable.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disable' }),
+      })
       if (!res.ok) throw new Error()
       await mutate()
       toast.success(`${busToDisable.busName}を無効化しました`)
@@ -82,6 +107,21 @@ export default function BusesPage() {
       setConfirmDialogOpen(false)
       setBusToDisable(null)
     }
+  }
+
+  const handleSetProgramClick = (bus: Bus) => {
+    setBusForProgram(bus)
+    setSetProgramDialogOpen(true)
+  }
+
+  const handleImageClick = (bus: Bus) => {
+    setBusForImage(bus)
+    setImageUploadDialogOpen(true)
+  }
+
+  const programNameById = (id: string | null) => {
+    if (!id || !programs) return '未設定'
+    return programs.find((p) => p.id === id)?.name ?? '未設定'
   }
 
   return (
@@ -112,10 +152,12 @@ export default function BusesPage() {
               <TableRow>
                 <TableHead className="w-28">バスコード</TableHead>
                 <TableHead>バス名</TableHead>
+                <TableHead className="w-28">ナンバープレート</TableHead>
+                <TableHead className="w-36">番組</TableHead>
                 <TableHead className="w-24">デバイストークン</TableHead>
                 <TableHead className="w-36">最終接続日時</TableHead>
                 <TableHead className="w-20">ステータス</TableHead>
-                <TableHead className="w-56 text-right sticky right-0 bg-background">操作</TableHead>
+                <TableHead className="w-64 text-right sticky right-0 bg-background">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -124,6 +166,14 @@ export default function BusesPage() {
                   <TableCell className="font-medium">{bus.busCode}</TableCell>
                   <TableCell className="overflow-hidden">
                     <span className="truncate block">{bus.busName}</span>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {bus.plateNumber ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm overflow-hidden">
+                    <span className="truncate block">
+                      {programNameById(bus.currentProgramId)}
+                    </span>
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {maskToken(bus.deviceToken)}
@@ -135,14 +185,30 @@ export default function BusesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right sticky right-0 bg-background">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSetProgramClick(bus)}
+                      >
+                        <Tv className="mr-1 size-4" />
+                        番組をセット
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleImageClick(bus)}
+                      >
+                        <ImageIcon className="mr-1 size-4" />
+                        画像
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleShowToken(bus.deviceToken)}
                       >
                         <Eye className="mr-1 size-4" />
-                        トークンを表示
+                        トークン
                       </Button>
                       {bus.enabled && (
                         <Button
@@ -196,6 +262,21 @@ export default function BusesPage() {
         confirmLabel="無効化"
         variant="destructive"
         onConfirm={handleConfirmDisable}
+      />
+
+      <SetProgramDialog
+        open={setProgramDialogOpen}
+        onOpenChange={setSetProgramDialogOpen}
+        bus={busForProgram}
+        programs={programs ?? []}
+        onSuccess={() => mutate()}
+      />
+
+      <ImageUploadDialog
+        open={imageUploadDialogOpen}
+        onOpenChange={setImageUploadDialogOpen}
+        bus={busForImage}
+        onSuccess={() => mutate()}
       />
     </div>
   )
@@ -279,6 +360,163 @@ function AddBusDialog({
           <Button onClick={handleCreate} disabled={isCreating}>
             {isCreating && <Spinner className="mr-2 size-4" />}
             追加
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function SetProgramDialog({
+  open,
+  onOpenChange,
+  bus,
+  programs,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  bus: Bus | null
+  programs: ProgramSummary[]
+  onSuccess: () => void
+}) {
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleOpen = (nextOpen: boolean) => {
+    if (nextOpen && bus) setSelectedProgramId(bus.currentProgramId ?? '')
+    onOpenChange(nextOpen)
+  }
+
+  const handleSave = async () => {
+    if (!bus) return
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/admin/buses/${bus.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update',
+          currentProgramId: selectedProgramId || null,
+        }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success('番組を設定しました')
+      onSuccess()
+      onOpenChange(false)
+    } catch {
+      toast.error('番組の設定に失敗しました')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>番組をセット</DialogTitle>
+          <DialogDescription>
+            {bus?.busName}（{bus?.busCode}）に割り当てる番組を選択してください。
+          </DialogDescription>
+        </DialogHeader>
+        <Select value={selectedProgramId} onValueChange={setSelectedProgramId}>
+          <SelectTrigger>
+            <SelectValue placeholder="番組を選択" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">番組なし</SelectItem>
+            {programs.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            キャンセル
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving && <Spinner className="mr-2 size-4" />}
+            設定
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ImageUploadDialog({
+  open,
+  onOpenChange,
+  bus,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  bus: Bus | null
+  onSuccess: () => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) setFile(null)
+    onOpenChange(nextOpen)
+  }
+
+  const handleUpload = async () => {
+    if (!bus || !file) return
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      const res = await fetch(`/api/admin/buses/${bus.id}/image`, {
+        method: 'PUT',
+        body: formData,
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error ?? 'エラー')
+      }
+      toast.success('画像を更新しました')
+      onSuccess()
+      handleOpenChange(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'アップロードに失敗しました')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>バス画像を変更</DialogTitle>
+          <DialogDescription>
+            {bus?.busName}（{bus?.busCode}）の画像をアップロードします。JPEG / PNG / WebP、5MB 以下。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:bg-muted file:text-foreground hover:file:bg-muted/80"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+          {file && (
+            <p className="text-sm text-muted-foreground">{file.name}（{(file.size / 1024).toFixed(0)} KB）</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            キャンセル
+          </Button>
+          <Button onClick={handleUpload} disabled={!file || isUploading}>
+            {isUploading && <Spinner className="mr-2 size-4" />}
+            アップロード
           </Button>
         </DialogFooter>
       </DialogContent>

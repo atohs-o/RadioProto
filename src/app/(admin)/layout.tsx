@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FileTextIcon, RadioIcon, GlobeIcon } from 'lucide-react'
+import { FileTextIcon, RadioIcon, GlobeIcon, BusIcon } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -35,6 +35,11 @@ const NAV_ITEMS = [
     title: 'ポーリングサイト',
     href: '/polling-sites',
     icon: GlobeIcon,
+  },
+  {
+    title: 'バス管理',
+    href: '/buses',
+    icon: BusIcon,
   },
 ]
 

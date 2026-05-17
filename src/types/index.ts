@@ -2,6 +2,10 @@ export interface Bus {
   id: string
   busCode: string
   busName: string
+  plateNumber: string | null
+  imageUrl: string | null
+  currentProgramId: string | null
+  isManualOverride: boolean
   deviceToken: string
   lastConnectedAt?: string
   enabled: boolean

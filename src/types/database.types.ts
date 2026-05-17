@@ -126,36 +126,65 @@ export type Database = {
         Row: {
           bus_code: string
           created_at: string
+          current_program_id: string | null
           group_id: string | null
           id: string
+          image_url: string | null
+          is_manual_override: boolean
+          manual_program_id: string | null
           name: string | null
+          plate_number: string | null
           qr_code_id: string
           updated_at: string
         }
         Insert: {
           bus_code: string
           created_at?: string
+          current_program_id?: string | null
           group_id?: string | null
           id?: string
+          image_url?: string | null
+          is_manual_override?: boolean
+          manual_program_id?: string | null
           name?: string | null
+          plate_number?: string | null
           qr_code_id?: string
           updated_at?: string
         }
         Update: {
           bus_code?: string
           created_at?: string
+          current_program_id?: string | null
           group_id?: string | null
           id?: string
+          image_url?: string | null
+          is_manual_override?: boolean
+          manual_program_id?: string | null
           name?: string | null
+          plate_number?: string | null
           qr_code_id?: string
           updated_at?: string
         }
         Relationships: [
           {
+            foreignKeyName: "buses_current_program_id_fkey"
+            columns: ["current_program_id"]
+            isOneToOne: false
+            referencedRelation: "radio_programs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "buses_group_id_fkey"
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buses_manual_program_id_fkey"
+            columns: ["manual_program_id"]
+            isOneToOne: false
+            referencedRelation: "radio_programs"
             referencedColumns: ["id"]
           },
         ]
