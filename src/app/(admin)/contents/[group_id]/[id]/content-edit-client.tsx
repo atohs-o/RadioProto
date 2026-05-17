@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Sparkles, Volume2, RefreshCw, Check } from 'lucide-react'
+import { ArrowLeft, Sparkles, Volume2, RefreshCw, Check, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,6 +69,15 @@ interface Props {
   groupId: string
 }
 
+function SaveBanner({ message }: { message: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+      <CheckCircle2 className="size-4 shrink-0" />
+      {message}
+    </div>
+  )
+}
+
 export function ContentEditClient({ content, groupId }: Props) {
   const router = useRouter()
   const isNew = content === null
@@ -97,6 +106,36 @@ export function ContentEditClient({ content, groupId }: Props) {
     content?.activeAudioFileId
   )
 
+  // 新規は最初から dirty、既存は変更があったときのみ dirty
+  const [isContentDirty, setIsContentDirty] = useState(isNew)
+  const [isAudioDirty, setIsAudioDirty] = useState(false)
+  const [savingAudio, setSavingAudio] = useState(false)
+  const [audioSaveError, setAudioSaveError] = useState<string | null>(null)
+
+  const [contentBanner, setContentBanner] = useState<string | null>(null)
+  const [audioBanner, setAudioBanner] = useState<string | null>(null)
+  const contentBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const audioBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (contentBannerTimer.current) clearTimeout(contentBannerTimer.current)
+      if (audioBannerTimer.current) clearTimeout(audioBannerTimer.current)
+    }
+  }, [])
+
+  const showContentBanner = (msg: string) => {
+    if (contentBannerTimer.current) clearTimeout(contentBannerTimer.current)
+    setContentBanner(msg)
+    contentBannerTimer.current = setTimeout(() => setContentBanner(null), 3000)
+  }
+
+  const showAudioBanner = (msg: string) => {
+    if (audioBannerTimer.current) clearTimeout(audioBannerTimer.current)
+    setAudioBanner(msg)
+    audioBannerTimer.current = setTimeout(() => setAudioBanner(null), 3000)
+  }
+
   const handleGenerateScript = useCallback(async () => {
     if (!sourceText.trim()) return
     setGeneratingScript(true)
@@ -117,6 +156,7 @@ export function ContentEditClient({ content, groupId }: Props) {
         return
       }
       setScriptText(data.scriptText)
+      setIsContentDirty(true)
       if (data.version) {
         const newVersion: ScriptVersion = {
           id: data.version.id,
@@ -163,21 +203,38 @@ export function ContentEditClient({ content, groupId }: Props) {
         setSaving(false)
         return
       }
-      router.push(`/contents/${groupId}`)
+      setIsContentDirty(false)
+      showContentBanner('コンテンツ情報を保存しました')
     }
+    setSaving(false)
   }, [isNew, content, title, sourceText, scriptText, tags, router, groupId])
 
   const handleAudioComplete = useCallback((audioFile: AudioFileInfo) => {
+    // TTS API が active_audio_file_id を DB に書き込み済みのため dirty にしない
     setAudioStatus('generated')
     setAllAudioFiles((prev) => [audioFile, ...prev].slice(0, 3))
     setActiveAudioFileId(audioFile.id)
   }, [])
 
-  const handleSetActiveAudio = useCallback(async (audioFile: AudioFileInfo) => {
-    if (!content?.id) return
+  const handleSelectActiveAudio = useCallback((audioFile: AudioFileInfo) => {
     setActiveAudioFileId(audioFile.id)
-    await setActiveAudioAction(content.id, audioFile.id)
-  }, [content])
+    setIsAudioDirty(true)
+  }, [])
+
+  const handleSaveAudio = useCallback(async () => {
+    if (!content?.id || !activeAudioFileId) return
+    setSavingAudio(true)
+    setAudioSaveError(null)
+    const result = await setActiveAudioAction(content.id, activeAudioFileId)
+    if (result.error) {
+      setAudioSaveError(result.error)
+      setSavingAudio(false)
+      return
+    }
+    setIsAudioDirty(false)
+    setSavingAudio(false)
+    showAudioBanner('音声設定を保存しました')
+  }, [content, activeAudioFileId])
 
   const scriptByteLength = getByteLength(scriptText)
   const isOverLimit = scriptByteLength > SCRIPT_BYTE_LIMIT
@@ -217,7 +274,7 @@ export function ContentEditClient({ content, groupId }: Props) {
                 <Input
                   id="title"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => { setTitle(e.target.value); setIsContentDirty(true) }}
                   placeholder="コンテンツのタイトル"
                 />
               </Field>
@@ -227,7 +284,7 @@ export function ContentEditClient({ content, groupId }: Props) {
                 <Textarea
                   id="sourceText"
                   value={sourceText}
-                  onChange={(e) => setSourceText(e.target.value)}
+                  onChange={(e) => { setSourceText(e.target.value); setIsContentDirty(true) }}
                   placeholder="台本の元になるテキストを入力..."
                   rows={6}
                 />
@@ -261,7 +318,7 @@ export function ContentEditClient({ content, groupId }: Props) {
                 <Textarea
                   id="scriptText"
                   value={scriptText}
-                  onChange={(e) => setScriptText(e.target.value)}
+                  onChange={(e) => { setScriptText(e.target.value); setIsContentDirty(true) }}
                   placeholder="台本テキスト（編集可能）"
                   rows={8}
                   className={isOverLimit ? 'border-destructive' : ''}
@@ -292,7 +349,7 @@ export function ContentEditClient({ content, groupId }: Props) {
                           variant="ghost"
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() => setScriptText(v.text)}
+                          onClick={() => { setScriptText(v.text); setIsContentDirty(true) }}
                         >
                           適用
                         </Button>
@@ -307,18 +364,20 @@ export function ContentEditClient({ content, groupId }: Props) {
                 <Input
                   id="tags"
                   value={tags}
-                  onChange={(e) => setTags(e.target.value)}
+                  onChange={(e) => { setTags(e.target.value); setIsContentDirty(true) }}
                   placeholder="タグをカンマ区切りで入力（例: 観光, イベント）"
                 />
               </Field>
 
-              <div className="flex justify-end gap-2 pt-4">
+              {contentBanner && <SaveBanner message={contentBanner} />}
+
+              <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" asChild>
                   <Link href={`/contents/${groupId}`}>キャンセル</Link>
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={saving || isOverLimit || !title.trim()}
+                  disabled={saving || isOverLimit || !title.trim() || !isContentDirty}
                 >
                   {saving && <Spinner className="mr-2 size-4" />}
                   保存
@@ -410,7 +469,7 @@ export function ContentEditClient({ content, groupId }: Props) {
                               variant="ghost"
                               size="sm"
                               className="h-7 text-xs"
-                              onClick={() => handleSetActiveAudio(af)}
+                              onClick={() => handleSelectActiveAudio(af)}
                             >
                               使用する
                             </Button>
@@ -422,6 +481,24 @@ export function ContentEditClient({ content, groupId }: Props) {
                       </div>
                     )
                   })}
+                </div>
+              </div>
+            )}
+
+            {!isNew && (
+              <div className="space-y-2 pt-2">
+                {audioSaveError && (
+                  <p className="text-sm text-destructive">{audioSaveError}</p>
+                )}
+                {audioBanner && <SaveBanner message={audioBanner} />}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSaveAudio}
+                    disabled={savingAudio || !isAudioDirty || !activeAudioFileId}
+                  >
+                    {savingAudio && <Spinner className="mr-2 size-4" />}
+                    音声設定を保存
+                  </Button>
                 </div>
               </div>
             )}

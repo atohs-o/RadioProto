@@ -22,7 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { ArrowLeft, Save, Trash2, Pencil, MapPin, X } from 'lucide-react'
+import { ArrowLeft, Save, Trash2, Pencil, MapPin, X, CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import Map from '@/components/map/map'
@@ -74,6 +74,20 @@ export function ProgramEditor({
   const [program, setProgram] = useState<Program>(initialProgram)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveBanner, setSaveBanner] = useState<string | null>(null)
+  const saveBannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (saveBannerTimer.current) clearTimeout(saveBannerTimer.current)
+    }
+  }, [])
+
+  const showBanner = (msg: string) => {
+    if (saveBannerTimer.current) clearTimeout(saveBannerTimer.current)
+    setSaveBanner(msg)
+    saveBannerTimer.current = setTimeout(() => setSaveBanner(null), 3000)
+  }
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pendingPosition, setPendingPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
@@ -127,7 +141,12 @@ export function ProgramEditor({
       setIsSaving(false)
       return
     }
-    router.push('/programs')
+    if (isNew && result.id) {
+      router.push(`/programs/${result.id}`)
+      return
+    }
+    setIsSaving(false)
+    showBanner('番組を保存しました')
   }
 
   const handleStopsImport = useCallback((stops: GTFSStop[]) => {
@@ -556,6 +575,13 @@ export function ProgramEditor({
 
           {saveError && (
             <p className="text-sm text-destructive">{saveError}</p>
+          )}
+
+          {saveBanner && (
+            <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+              <CheckCircle2 className="size-4 shrink-0" />
+              {saveBanner}
+            </div>
           )}
 
           {/* 保存ボタン */}
