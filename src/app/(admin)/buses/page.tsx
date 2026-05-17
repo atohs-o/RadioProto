@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import useSWR from 'swr'
-import { Plus, Eye, Ban, Tv, ImageIcon } from 'lucide-react'
+import { Plus, Eye, Ban, Tv, Pencil } from 'lucide-react'
+import Link from 'next/link'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -77,8 +79,6 @@ export default function BusesPage() {
   const [busToDisable, setBusToDisable] = useState<Bus | null>(null)
   const [setProgramDialogOpen, setSetProgramDialogOpen] = useState(false)
   const [busForProgram, setBusForProgram] = useState<Bus | null>(null)
-  const [imageUploadDialogOpen, setImageUploadDialogOpen] = useState(false)
-  const [busForImage, setBusForImage] = useState<Bus | null>(null)
 
   const handleShowToken = (token: string) => {
     setSelectedToken(token)
@@ -114,10 +114,6 @@ export default function BusesPage() {
     setSetProgramDialogOpen(true)
   }
 
-  const handleImageClick = (bus: Bus) => {
-    setBusForImage(bus)
-    setImageUploadDialogOpen(true)
-  }
 
   const programNameById = (id: string | null) => {
     if (!id || !programs) return '未設定'
@@ -147,78 +143,96 @@ export default function BusesPage() {
         </div>
       ) : (
         <div className="rounded-md border">
-          <Table className="table-fixed">
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-28">バスコード</TableHead>
                 <TableHead>バス名</TableHead>
-                <TableHead className="w-28">ナンバープレート</TableHead>
-                <TableHead className="w-36">番組</TableHead>
-                <TableHead className="w-24">デバイストークン</TableHead>
+                <TableHead className="w-32">ナンバープレート</TableHead>
+                <TableHead>番組</TableHead>
                 <TableHead className="w-36">最終接続日時</TableHead>
-                <TableHead className="w-20">ステータス</TableHead>
-                <TableHead className="w-64 text-right sticky right-0 bg-background">操作</TableHead>
+                <TableHead className="w-16">状態</TableHead>
+                <TableHead className="w-28 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {buses?.map((bus) => (
                 <TableRow key={bus.id}>
                   <TableCell className="font-medium">{bus.busCode}</TableCell>
-                  <TableCell className="overflow-hidden">
-                    <span className="truncate block">{bus.busName}</span>
+                  <TableCell>
+                    <div className="truncate max-w-48">{bus.busName}</div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {bus.plateNumber ?? '—'}
                   </TableCell>
-                  <TableCell className="text-sm overflow-hidden">
-                    <span className="truncate block">
+                  <TableCell className="text-sm">
+                    <div className="truncate max-w-48">
                       {programNameById(bus.currentProgramId)}
-                    </span>
+                    </div>
                   </TableCell>
-                  <TableCell className="font-mono text-sm">
-                    {maskToken(bus.deviceToken)}
-                  </TableCell>
-                  <TableCell>{formatDate(bus.lastConnectedAt)}</TableCell>
+                  <TableCell className="text-sm">{formatDate(bus.lastConnectedAt)}</TableCell>
                   <TableCell>
                     <Badge variant={bus.enabled ? 'default' : 'secondary'}>
                       {bus.enabled ? '有効' : '無効'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right sticky right-0 bg-background">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleSetProgramClick(bus)}
-                      >
-                        <Tv className="mr-1 size-4" />
-                        番組をセット
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleImageClick(bus)}
-                      >
-                        <ImageIcon className="mr-1 size-4" />
-                        画像
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleShowToken(bus.deviceToken)}
-                      >
-                        <Eye className="mr-1 size-4" />
-                        トークン
-                      </Button>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-0.5">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => handleSetProgramClick(bus)}
+                          >
+                            <Tv className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>番組をセット</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            asChild
+                          >
+                            <Link href={`/buses/${bus.id}`}>
+                              <Pencil className="size-4" />
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>詳細を編集</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => handleShowToken(bus.deviceToken)}
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>トークンを表示</TooltipContent>
+                      </Tooltip>
                       {bus.enabled && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDisableClick(bus)}
-                        >
-                          <Ban className="mr-1 size-4" />
-                          無効化
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => handleDisableClick(bus)}
+                            >
+                              <Ban className="size-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>無効化</TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </TableCell>
@@ -272,12 +286,6 @@ export default function BusesPage() {
         onSuccess={() => mutate()}
       />
 
-      <ImageUploadDialog
-        open={imageUploadDialogOpen}
-        onOpenChange={setImageUploadDialogOpen}
-        bus={busForImage}
-        onSuccess={() => mutate()}
-      />
     </div>
   )
 }
@@ -447,79 +455,3 @@ function SetProgramDialog({
   )
 }
 
-function ImageUploadDialog({
-  open,
-  onOpenChange,
-  bus,
-  onSuccess,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  bus: Bus | null
-  onSuccess: () => void
-}) {
-  const [file, setFile] = useState<File | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) setFile(null)
-    onOpenChange(nextOpen)
-  }
-
-  const handleUpload = async () => {
-    if (!bus || !file) return
-    setIsUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('image', file)
-      const res = await fetch(`/api/admin/buses/${bus.id}/image`, {
-        method: 'PUT',
-        body: formData,
-      })
-      if (!res.ok) {
-        const data = await res.json() as { error?: string }
-        throw new Error(data.error ?? 'エラー')
-      }
-      toast.success('画像を更新しました')
-      onSuccess()
-      handleOpenChange(false)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'アップロードに失敗しました')
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>バス画像を変更</DialogTitle>
-          <DialogDescription>
-            {bus?.busName}（{bus?.busCode}）の画像をアップロードします。JPEG / PNG / WebP、5MB 以下。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:bg-muted file:text-foreground hover:file:bg-muted/80"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-          {file && (
-            <p className="text-sm text-muted-foreground">{file.name}（{(file.size / 1024).toFixed(0)} KB）</p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            キャンセル
-          </Button>
-          <Button onClick={handleUpload} disabled={!file || isUploading}>
-            {isUploading && <Spinner className="mr-2 size-4" />}
-            アップロード
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
