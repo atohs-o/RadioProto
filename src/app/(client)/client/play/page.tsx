@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Radio, Volume2, Power } from 'lucide-react'
-import { StatusIndicator } from '@/components/client/status-indicator'
 import { OfflineBanner } from '@/components/client/offline-banner'
 import { GpsLostBanner } from '@/components/client/gps-lost-banner'
 import { PlaybackErrorDialog } from '@/components/client/playback-error-dialog'
@@ -971,73 +970,81 @@ function PlayPageContent() {
       <div className="flex flex-1 overflow-hidden">
         {/* 左 2/3: ステータスバー + 地図 */}
         <div className="flex w-2/3 flex-col">
-          <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
-            <div className="flex items-center gap-6">
-              <StatusIndicator
-                status={gpsStatus === 'active' ? 'ok' : gpsStatus === 'low-accuracy' ? 'warning' : 'error'}
-                label="GPS"
-                sublabel={
-                  gpsStatus === 'active' ? '受信中' : gpsStatus === 'low-accuracy' ? '精度低下' : '未受信'
-                }
-                size="lg"
-              />
-              <StatusIndicator
-                status={serverStatus === 'connected' ? 'ok' : 'error'}
-                label="サーバー"
-                sublabel={serverStatus === 'connected' ? '接続中' : '切断'}
-                size="lg"
-              />
-              <StatusIndicator
-                status="error"
-                label="MQTT"
-                sublabel="未接続"
-                size="lg"
-              />
+          <div className="flex items-stretch gap-0 border-b border-border bg-card px-3 py-2">
+            {/* 運行終了 */}
+            <div className="flex items-center pr-3">
+              <Button
+                variant="outline"
+                onClick={handleEndTripConfirmation}
+                className="gap-1.5 border-destructive text-destructive hover:bg-destructive hover:text-white"
+              >
+                <Power className="h-4 w-4" />
+                <span className="text-sm">運行終了</span>
+              </Button>
             </div>
 
-            <div className="flex flex-1 flex-col items-center justify-center gap-1">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3">
-                  <Radio className="h-5 w-5 text-brand-orange" />
-                  <div className="text-lg">
-                    <span className="text-muted-foreground">再生中: </span>
-                    <span className="font-medium text-foreground">{playingLabel}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Volume2 className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-lg text-muted-foreground">待機中: {queueCount}件</span>
-                </div>
+            <div className="w-px bg-border mx-2 self-stretch" />
+
+            {/* GPS / サーバー / MQTT（縦3行） */}
+            <div className="flex flex-col justify-center gap-1 px-2 text-sm">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: gpsStatus === 'active' ? 'var(--color-brand-green)' : gpsStatus === 'low-accuracy' ? 'var(--color-brand-warning)' : 'var(--color-brand-red)' }}
+                />
+                <span className="w-[4em] text-muted-foreground">GPS</span>
+                <span className="font-medium">{gpsStatus === 'active' ? '受信中' : gpsStatus === 'low-accuracy' ? '精度低下' : '未受信'}</span>
               </div>
-              <div className="text-sm text-muted-foreground">
-                {nextTarget ? (
-                  <>次：{nextTarget.displayName ?? '地点'} / {nextTarget.contentTitle}</>
-                ) : (
-                  <>次の再生コンテンツはありません</>
-                )}
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: serverStatus === 'connected' ? 'var(--color-brand-green)' : 'var(--color-brand-red)' }}
+                />
+                <span className="w-[4em] text-muted-foreground">サーバー</span>
+                <span className="font-medium">{serverStatus === 'connected' ? '接続中' : '切断'}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: 'var(--color-brand-red)' }} />
+                <span className="w-[4em] text-muted-foreground">MQTT</span>
+                <span className="font-medium">未接続</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3">
-                <span className="text-lg text-muted-foreground">バス案内音声</span>
+            <div className="w-px bg-border mx-2 self-stretch" />
+
+            {/* 再生中 / 待機中 / 次（縦3行） */}
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-2 text-sm">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Radio className="h-3.5 w-3.5 flex-shrink-0 text-brand-orange" />
+                <span className="flex-shrink-0 text-muted-foreground">再生中:</span>
+                <span className="truncate font-medium">{playingLabel}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Volume2 className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                <span className="flex-shrink-0 text-muted-foreground">待機中:</span>
+                <span className="font-medium">{queueCount}件</span>
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="flex-shrink-0 text-muted-foreground">次:</span>
+                <span className="truncate text-muted-foreground">
+                  {nextTarget ? `${nextTarget.displayName ?? '地点'} / ${nextTarget.contentTitle}` : '次の再生コンテンツはありません'}
+                </span>
+              </div>
+            </div>
+
+            <div className="w-px bg-border mx-2 self-stretch" />
+
+            {/* バス案内音声（2行） */}
+            <div className="flex flex-col justify-center gap-1.5 pl-2">
+              <span className="text-sm text-muted-foreground">バス案内音声</span>
+              <div className="flex items-center gap-2">
                 <Switch
                   checked={externalAudio}
                   onCheckedChange={handleExternalAudioToggle}
                   className="data-[state=checked]:bg-brand-orange"
                 />
-                <span className="min-w-[40px] text-lg font-medium text-foreground">
-                  {externalAudio ? 'ON' : 'OFF'}
-                </span>
+                <span className="min-w-[2em] text-sm font-medium">{externalAudio ? 'ON' : 'OFF'}</span>
               </div>
-              <Button
-                variant="outline"
-                onClick={handleEndTripConfirmation}
-                className="min-h-[44px] gap-2 border-destructive text-destructive hover:bg-destructive hover:text-white"
-              >
-                <Power className="h-5 w-5" />
-                <span className="text-lg">運行終了</span>
-              </Button>
             </div>
           </div>
 
