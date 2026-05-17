@@ -58,3 +58,26 @@ export const PlaybackEventBodySchema = z.object({
   status: z.enum(['played', 'skipped', 'failed', 'cancelled']),
   durationSeconds: z.number().optional(),
 })
+
+// GET /api/client/bus レスポンス
+export const ClientBusStateSchema = z.object({
+  isManualOverride: z.boolean(),
+  currentProgramId: z.string().uuid().nullable(),
+  manualProgramId: z.string().uuid().nullable(),
+  currentProgramName: z.string().nullable(),
+})
+export type ClientBusState = z.infer<typeof ClientBusStateSchema>
+
+// PATCH /api/client/bus リクエストボディ
+export const PatchBusBodySchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('setManual'), programId: z.string().uuid() }),
+  z.object({ action: z.literal('clearManual') }),
+])
+
+// GET /api/client/programs レスポンス要素
+export const ClientProgramSummarySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  itemCount: z.number().int().nonnegative(),
+})
+export type ClientProgramSummary = z.infer<typeof ClientProgramSummarySchema>

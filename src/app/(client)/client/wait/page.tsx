@@ -1,0 +1,190 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { Play, Menu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
+import { StatusIndicator } from '@/components/client/status-indicator'
+import type { ClientBusState } from '@/lib/schemas/client'
+import type { GpsStatus, ServerStatus } from '@/lib/types'
+
+export default function WaitPage() {
+  const router = useRouter()
+  const [busState, setBusState] = useState<ClientBusState | null>(null)
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('inactive')
+  const [serverStatus, setServerStatus] = useState<ServerStatus>('disconnected')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isClearing, setIsClearing] = useState(false)
+
+  const fetchBusState = useCallback(async () => {
+    const token = localStorage.getItem('deviceToken')
+    if (!token) {
+      router.replace('/client/setup')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/client/bus', {
+        headers: { 'X-Device-Token': token },
+      })
+      if (res.status === 401) {
+        router.replace('/client/setup')
+        return
+      }
+      if (!res.ok) throw new Error()
+      const data: ClientBusState = await res.json()
+      setBusState(data)
+      setServerStatus('connected')
+    } catch {
+      setServerStatus('disconnected')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [router])
+
+  useEffect(() => {
+    fetchBusState()
+  }, [fetchBusState])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') fetchBusState()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [fetchBusState])
+
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => setGpsStatus(pos.coords.accuracy > 100 ? 'low-accuracy' : 'active'),
+      () => setGpsStatus('inactive'),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 5_000 },
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
+  const handleClearManual = useCallback(async () => {
+    const token = localStorage.getItem('deviceToken')
+    if (!token) return
+    setIsClearing(true)
+    try {
+      await fetch('/api/client/bus', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Device-Token': token },
+        body: JSON.stringify({ action: 'clearManual' }),
+      })
+      await fetchBusState()
+    } finally {
+      setIsClearing(false)
+    }
+  }, [fetchBusState])
+
+  const gpsInfo = {
+    active: { status: 'ok' as const, label: '受信中' },
+    inactive: { status: 'error' as const, label: '未受信' },
+    'low-accuracy': { status: 'warning' as const, label: '精度低下' },
+  }[gpsStatus]
+
+  const serverInfo = {
+    connected: { status: 'ok' as const, label: '接続中' },
+    disconnected: { status: 'error' as const, label: '切断' },
+  }[serverStatus]
+
+  const canStart =
+    gpsStatus === 'active' && serverStatus === 'connected' && !!busState?.currentProgramId
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center dark:bg-background">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col p-6 dark:bg-background">
+      <header className="mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">AutoDJ Radio</h1>
+            <p className="text-lg text-muted-foreground">待機中</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-12 w-12"
+            onClick={() => router.push('/client/select')}
+          >
+            <Menu className="h-6 w-6" />
+            <span className="sr-only">番組選択</span>
+          </Button>
+        </div>
+      </header>
+
+      <main className="flex-1 space-y-6">
+        <div className="flex gap-8">
+          <StatusIndicator
+            status={gpsInfo.status}
+            label="GPS"
+            sublabel={gpsInfo.label}
+            size="lg"
+          />
+          <StatusIndicator
+            status={serverInfo.status}
+            label="サーバー"
+            sublabel={serverInfo.label}
+            size="lg"
+          />
+          <StatusIndicator
+            status="error"
+            label="MQTT"
+            sublabel="未接続"
+            size="lg"
+          />
+        </div>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <p className="text-lg text-foreground">
+                現在の番組:{' '}
+                <span className="font-medium">
+                  {busState?.currentProgramName ?? '未設定'}
+                </span>
+              </p>
+              {busState?.isManualOverride && (
+                <Badge className="bg-brand-orange text-white">手動設定中</Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Button
+          variant="outline"
+          className="w-full"
+          disabled={!busState?.isManualOverride || isClearing}
+          onClick={handleClearManual}
+        >
+          {isClearing ? <Spinner className="mr-2 h-4 w-4" /> : null}
+          管理画面の設定に戻す
+        </Button>
+      </main>
+
+      <footer className="mt-6 border-t pt-6">
+        <Button
+          size="lg"
+          className="h-16 w-full text-xl"
+          disabled={!canStart}
+          onClick={() => router.push(`/client/play?programId=${busState!.currentProgramId}`)}
+        >
+          <Play className="mr-3 h-6 w-6" />
+          再生開始
+        </Button>
+      </footer>
+    </div>
+  )
+}

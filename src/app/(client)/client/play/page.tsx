@@ -349,7 +349,7 @@ function PlayPageContent() {
   // 初期化（認証・番組取得・trip開始・Realtime接続）
   useEffect(() => {
     if (!programId) {
-      router.replace('/client')
+      router.replace('/client/wait')
       return
     }
     const token = localStorage.getItem('deviceToken')
@@ -370,7 +370,7 @@ function PlayPageContent() {
 
         const progs: ClientProgram[] = await progRes.json()
         const found = progs.find((p) => p.id === programId)
-        if (!found) { router.replace('/client'); return }
+        if (!found) { router.replace('/client/wait'); return }
 
         programRef.current = found
         setProgram(found)
@@ -547,7 +547,7 @@ function PlayPageContent() {
     if (locationLogIntervalRef.current) clearInterval(locationLogIntervalRef.current)
     if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
 
-    router.replace('/client')
+    router.replace('/client/wait')
   }, [recordPlaybackEvent, router])
 
   if (isLoading) {
@@ -562,7 +562,7 @@ function PlayPageContent() {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background p-6 dark">
         <p className="text-lg text-destructive">{initError}</p>
-        <Button onClick={() => router.replace('/client')}>番組選択に戻る</Button>
+        <Button onClick={() => router.replace('/client/wait')}>待機画面に戻る</Button>
       </div>
     )
   }
@@ -624,6 +624,12 @@ function PlayPageContent() {
             sublabel={serverStatus === 'connected' ? '接続中' : '切断'}
             size="lg"
           />
+          <StatusIndicator
+            status="error"
+            label="MQTT"
+            sublabel="未接続"
+            size="lg"
+          />
         </div>
 
         <div className="flex flex-1 items-center justify-center gap-6">
@@ -642,7 +648,7 @@ function PlayPageContent() {
 
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
-            <span className="text-lg text-muted-foreground">外部音声</span>
+            <span className="text-lg text-muted-foreground">バス案内音声</span>
             <Switch
               checked={externalAudio}
               onCheckedChange={handleExternalAudioToggle}
