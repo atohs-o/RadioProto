@@ -60,7 +60,18 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const parsed = z.array(ClientProgramSchema).parse([{ id: prog.id, name: prog.name, items: mappedItems }])
+    const { data: shapeRows } = await supabase
+      .from('radio_program_shapes')
+      .select('shape_id, points')
+      .eq('program_id', programId)
+
+    const ShapePointSchema = z.object({ lat: z.number(), lng: z.number() })
+    const shapes = (shapeRows ?? []).map((s) => ({
+      shapeId: s.shape_id,
+      points: z.array(ShapePointSchema).catch([]).parse(s.points),
+    }))
+
+    const parsed = z.array(ClientProgramSchema).parse([{ id: prog.id, name: prog.name, items: mappedItems, shapes }])
     return NextResponse.json(parsed)
   } catch (e) {
     console.error('GET /api/client/program:', e)

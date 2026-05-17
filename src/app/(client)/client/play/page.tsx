@@ -735,10 +735,18 @@ function PlayPageContent() {
     audioDurationSec: item.durationSeconds ?? 0,
   }))
 
+  const shapePoints = (program?.shapes ?? []).flatMap((s) => s.points)
+  const sortedItems = (program?.items ?? [])
+    .slice()
+    .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+  const splitItem = [...sortedItems].reverse().find((item) => playedItemIds.has(item.id)) ?? null
+
   const playingItem = program?.items.find((i) => i.id === playingItemId)
   const playingLabel = playingItem
     ? (playingItem.displayName ?? playingItem.contentTitle)
     : '---'
+
+  const nextTarget = sortedItems.find((item) => !playedItemIds.has(item.id) && item.id !== playingItemId) ?? null
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background dark">
@@ -764,17 +772,7 @@ function PlayPageContent() {
         onConfirm={handleEndTrip}
       />
 
-      <div className="flex-1">
-        <PlayMap
-          routePoints={routePoints}
-          items={mapItems}
-          currentPosition={currentPosition}
-          playingItemId={playingItemId ?? undefined}
-          playedItemIds={[...playedItemIds]}
-        />
-      </div>
-
-      <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-4 py-3">
+      <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
         <div className="flex items-center gap-6">
           <StatusIndicator
             status={gpsStatus === 'active' ? 'ok' : gpsStatus === 'low-accuracy' ? 'warning' : 'error'}
@@ -798,17 +796,26 @@ function PlayPageContent() {
           />
         </div>
 
-        <div className="flex flex-1 items-center justify-center gap-6">
-          <div className="flex items-center gap-3">
-            <Radio className="h-5 w-5 text-brand-orange" />
-            <div className="text-lg">
-              <span className="text-muted-foreground">再生中: </span>
-              <span className="font-medium text-foreground">{playingLabel}</span>
+        <div className="flex flex-1 flex-col items-center justify-center gap-1">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <Radio className="h-5 w-5 text-brand-orange" />
+              <div className="text-lg">
+                <span className="text-muted-foreground">再生中: </span>
+                <span className="font-medium text-foreground">{playingLabel}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Volume2 className="h-5 w-5 text-muted-foreground" />
+              <span className="text-lg text-muted-foreground">待機中: {queueCount}件</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Volume2 className="h-5 w-5 text-muted-foreground" />
-            <span className="text-lg text-muted-foreground">待機中: {queueCount}件</span>
+          <div className="text-sm text-muted-foreground">
+            {nextTarget ? (
+              <>次：{nextTarget.displayName ?? '地点'} / {nextTarget.contentTitle}</>
+            ) : (
+              <>次の再生コンテンツはありません</>
+            )}
           </div>
         </div>
 
@@ -833,6 +840,18 @@ function PlayPageContent() {
             <span className="text-lg">運行終了</span>
           </Button>
         </div>
+      </div>
+
+      <div className="flex-1">
+        <PlayMap
+          routePoints={routePoints}
+          items={mapItems}
+          currentPosition={currentPosition}
+          playingItemId={playingItemId ?? undefined}
+          playedItemIds={[...playedItemIds]}
+          shapePoints={shapePoints}
+          splitItem={splitItem}
+        />
       </div>
     </div>
   )

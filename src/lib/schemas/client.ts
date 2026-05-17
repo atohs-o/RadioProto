@@ -19,10 +19,18 @@ export const ClientProgramItemSchema = z.object({
 })
 export type ClientProgramItem = z.infer<typeof ClientProgramItemSchema>
 
+const ClientShapePointSchema = z.object({ lat: z.number(), lng: z.number() })
+const ClientProgramShapeSchema = z.object({
+  shapeId: z.string(),
+  points: z.array(ClientShapePointSchema),
+})
+export type ClientProgramShape = z.infer<typeof ClientProgramShapeSchema>
+
 export const ClientProgramSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   items: z.array(ClientProgramItemSchema),
+  shapes: z.array(ClientProgramShapeSchema).default([]),
 })
 export type ClientProgram = z.infer<typeof ClientProgramSchema>
 

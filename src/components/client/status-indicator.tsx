@@ -49,8 +49,7 @@ export function StatusIndicator({
         className={cn(
           'rounded-full',
           styles.dot,
-          statusColors[status],
-          status === 'ok' && 'animate-pulse'
+          statusColors[status]
         )}
         aria-hidden="true"
       />

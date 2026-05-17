@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { publicEnv } from '@/lib/env'
+import { haversineDistance } from '@/lib/geo'
 
 interface RoutePoint {
   lat: number
@@ -25,6 +26,8 @@ interface PlayMapProps {
   currentPosition: { lat: number; lng: number } | null | undefined
   playingItemId?: string
   playedItemIds?: string[]
+  shapePoints?: { lat: number; lng: number }[]
+  splitItem?: { lat: number; lng: number } | null
 }
 
 // 現在位置マーカー（青い丸）
@@ -47,9 +50,9 @@ const currentPositionIcon = L.divIcon({
 // コンテンツピンアイコン生成
 function createPinIcon(status: 'waiting' | 'playing' | 'played'): L.DivIcon {
   const colors = {
-    waiting: '#5B7DBE',  // 青
+    waiting: '#FA5012',  // ブランドオレンジ
     playing: '#4D9B6F',  // 緑
-    played: '#78808E',   // グレー
+    played: '#9AA0AB',   // グレー
   }
   const color = colors[status]
 
@@ -101,13 +104,33 @@ export default function PlayMap({
   currentPosition,
   playingItemId,
   playedItemIds = [],
+  shapePoints,
+  splitItem,
 }: PlayMapProps) {
-  // 路線ポイントを [lat, lng] 形式に変換
-  const polylinePositions: [number, number][] = routePoints.map(p => [p.lat, p.lng])
+  // shapes があれば優先、なければ routePoints にフォールバック
+  const basePoints = shapePoints && shapePoints.length > 1 ? shapePoints : routePoints
+
+  // splitItem の最近傍点でポリラインを通過済み／未通過に分割
+  let passedPositions: [number, number][] = []
+  let upcomingPositions: [number, number][] = basePoints.map((p) => [p.lat, p.lng])
+
+  if (splitItem && basePoints.length > 1) {
+    let minDist = Infinity
+    let splitIdx = 0
+    basePoints.forEach((p, i) => {
+      const d = haversineDistance(p, splitItem)
+      if (d < minDist) {
+        minDist = d
+        splitIdx = i
+      }
+    })
+    passedPositions = basePoints.slice(0, splitIdx + 1).map((p) => [p.lat, p.lng])
+    upcomingPositions = basePoints.slice(splitIdx).map((p) => [p.lat, p.lng])
+  }
 
   // 地図の初期中心点を計算
-  const center: [number, number] = routePoints.length > 0
-    ? [routePoints[0].lat, routePoints[0].lng]
+  const center: [number, number] = basePoints.length > 0
+    ? [basePoints[0].lat, basePoints[0].lng]
     : [36.3006, 137.8729] // デフォルト: 穂高駅
 
   return (
@@ -122,15 +145,18 @@ export default function PlayMap({
         url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`}
       />
 
-      {/* 路線ライン */}
-      {polylinePositions.length > 1 && (
+      {/* 通過済み区間（グレー） */}
+      {passedPositions.length > 1 && (
         <Polyline
-          positions={polylinePositions}
-          pathOptions={{
-            color: '#FA5012',
-            weight: 4,
-            opacity: 0.8,
-          }}
+          positions={passedPositions}
+          pathOptions={{ color: '#9AA0AB', weight: 4, opacity: 0.8 }}
+        />
+      )}
+      {/* 未通過区間（ブランドオレンジ） */}
+      {upcomingPositions.length > 1 && (
+        <Polyline
+          positions={upcomingPositions}
+          pathOptions={{ color: '#FA5012', weight: 4, opacity: 0.8 }}
         />
       )}
 
