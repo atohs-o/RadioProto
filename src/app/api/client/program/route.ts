@@ -40,13 +40,13 @@ export async function GET(request: NextRequest) {
     const { data: items } = await supabase
       .from('radio_program_items')
       .select(
-        'id, lat, lng, display_name, sequence, audio_file_id, contents!inner(title), audio_files(duration_seconds)',
+        'id, lat, lng, display_name, sequence, audio_file_id, contents!inner(title, script), audio_files(duration_seconds)',
       )
       .eq('radio_program_id', programId)
       .order('sequence', { ascending: true, nullsFirst: false })
 
     const mappedItems = (items ?? []).map((item) => {
-      const content = item.contents as unknown as { title: string }
+      const content = item.contents as unknown as { title: string; script: string | null }
       const audioFile = item.audio_files as unknown as { duration_seconds: number | null } | null
       return {
         id: item.id,
@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
         audioFileId: item.audio_file_id,
         durationSeconds: audioFile?.duration_seconds ?? null,
         sequence: item.sequence,
+        script: content.script,
       }
     })
 

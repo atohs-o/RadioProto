@@ -142,15 +142,15 @@ export default function WaitPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center dark:bg-background">
+      <div className="flex h-screen items-center justify-center overflow-hidden dark:bg-background">
         <Spinner className="h-8 w-8" />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen flex-col p-6 dark:bg-background">
-      <header className="mb-8">
+    <div className="flex h-screen flex-col overflow-hidden p-4 dark:bg-background">
+      <header className="mb-4 shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">AutoDJ Radio</h1>
@@ -168,7 +168,7 @@ export default function WaitPage() {
         </div>
       </header>
 
-      <main className="flex-1 space-y-6">
+      <main className="min-h-0 flex-1 space-y-4 overflow-hidden">
         <div className="flex gap-8">
           <StatusIndicator
             status={gpsInfo.status}
@@ -232,12 +232,12 @@ export default function WaitPage() {
         </Button>
       </main>
 
-      <footer className="mt-6 border-t pt-6">
+      <footer className="mt-4 shrink-0 border-t pt-4">
         <Button
           className={cn(
-            'min-h-[80px] w-full text-2xl font-bold transition-all',
+            'min-h-[60px] w-full text-xl font-bold transition-colors',
             canStart
-              ? 'bg-[#FA5012] text-white hover:bg-[#FA5012]/90 animate-pulse'
+              ? 'bg-[#FA5012] text-white hover:bg-[#FA5012]/90'
               : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50',
           )}
           disabled={!canStart}

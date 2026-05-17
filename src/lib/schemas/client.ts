@@ -16,6 +16,7 @@ export const ClientProgramItemSchema = z.object({
   audioFileId: z.string().uuid().nullable(),
   durationSeconds: z.number().nullable(),
   sequence: z.number().nullable(),
+  script: z.string().nullable(),
 })
 export type ClientProgramItem = z.infer<typeof ClientProgramItemSchema>
 

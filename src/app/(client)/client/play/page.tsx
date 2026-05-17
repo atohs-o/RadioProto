@@ -36,6 +36,63 @@ const DISTANCE_LOG_NORMAL_MS = 10_000
 const DISTANCE_LOG_NEAR_MS = 1_000
 const DISTANCE_LOG_NEAR_THRESHOLD_M = 100
 
+type ScriptLine = { speaker: 'speaker1' | 'speaker2'; text: string }
+type ScriptEntry = { itemId: string; contentTitle: string; lines: ScriptLine[] }
+
+function parseScript(script: string | null): ScriptLine[] {
+  if (!script) return []
+  return script
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => {
+      if (l.startsWith('Speaker1:')) return { speaker: 'speaker1' as const, text: l.slice(9).trim() }
+      if (l.startsWith('Speaker2:')) return { speaker: 'speaker2' as const, text: l.slice(9).trim() }
+      return { speaker: 'speaker1' as const, text: l }
+    })
+}
+
+function ScriptPanel({ entries }: { entries: ScriptEntry[] }) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [entries])
+
+  return (
+    <div className="flex w-1/3 flex-col overflow-hidden border-l border-border" style={{ backgroundColor: '#DEE0E3' }}>
+      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {entries.length === 0 && (
+          <p className="text-center text-xs text-brand-gray mt-4">再生が始まると台本が表示されます</p>
+        )}
+        {entries.map((entry) => (
+          <div key={entry.itemId}>
+            <div className="text-center text-xs text-brand-gray py-1 border-b border-brand-gray-200 mb-2">
+              {entry.contentTitle}
+            </div>
+            {entry.lines.map((line, i) => (
+              <div
+                key={i}
+                className={`flex mb-2 ${line.speaker === 'speaker1' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className="max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed"
+                  style={{
+                    backgroundColor: line.speaker === 'speaker1' ? '#FA5012' : '#FEDCD0',
+                    color: line.speaker === 'speaker1' ? 'white' : '#1a1a1a',
+                  }}
+                >
+                  {line.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  )
+}
+
 function PlayPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -57,6 +114,7 @@ function PlayPageContent() {
   const [initError, setInitError] = useState<string | null>(null)
   const [showGpsLostBanner, setShowGpsLostBanner] = useState(false)
   const [showLowProgressDialog, setShowLowProgressDialog] = useState(false)
+  const [scriptEntries, setScriptEntries] = useState<ScriptEntry[]>([])
 
   // Refs（GPSコールバックや音声コールバックで最新値を参照するため）
   const deviceTokenRef = useRef<string | null>(null)
@@ -101,6 +159,8 @@ function PlayPageContent() {
   const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 4-6: 低進捗ダイアログを1度だけ表示
   const lowProgressShownRef = useRef(false)
+  // バス案内音声一時停止中の再生位置
+  const pausedTimeRef = useRef<number>(0)
 
   const recordPlaybackEvent = useCallback(
     async (
@@ -685,27 +745,37 @@ function PlayPageContent() {
     prevServerStatusRef.current = serverStatus
   }, [serverStatus, isLoading])
 
-  const handleExternalAudioToggle = useCallback(
-    (checked: boolean) => {
-      externalAudioRef.current = checked
-      setExternalAudio(checked)
+  // 再生開始時に台本エントリを追加
+  useEffect(() => {
+    if (!playingItemId || !program) return
+    const item = program.items.find((i) => i.id === playingItemId)
+    if (!item?.script) return
+    setScriptEntries((prev) => {
+      if (prev.some((e) => e.itemId === playingItemId)) return prev
+      return [...prev, { itemId: playingItemId, contentTitle: item.contentTitle, lines: parseScript(item.script) }]
+    })
+  }, [playingItemId, program])
 
-      if (checked && isPlayingRef.current && currentPlayingItemRef.current) {
-        const item = currentPlayingItemRef.current
-        if (currentObjectUrlRef.current) {
-          URL.revokeObjectURL(currentObjectUrlRef.current)
-          currentObjectUrlRef.current = null
-        }
-        audioRef.current?.pause()
-        audioRef.current = null
-        recordPlaybackEvent(item.id, 'cancelled')
-        isPlayingRef.current = false
-        currentPlayingItemRef.current = null
-        setPlayingItemId(null)
+  const handleExternalAudioToggle = useCallback((checked: boolean) => {
+    externalAudioRef.current = checked
+    setExternalAudio(checked)
+
+    if (checked) {
+      // ON: 再生中なら一時停止して位置を保存（isPlayingRef は true のまま → GPS が再キューしない）
+      if (audioRef.current && isPlayingRef.current) {
+        pausedTimeRef.current = audioRef.current.currentTime
+        audioRef.current.pause()
       }
-    },
-    [recordPlaybackEvent],
-  )
+    } else {
+      // OFF: 一時停止中の音声を再開、なければキューから開始
+      if (audioRef.current && isPlayingRef.current) {
+        audioRef.current.currentTime = pausedTimeRef.current
+        audioRef.current.play().catch(console.error)
+      } else {
+        playNextFromQueueRef.current()
+      }
+    }
+  }, [])
 
   const handleAutoEndTrip = useCallback(async (type: 'auto_terminal' | 'timeout' | 'offline' | 'auto_completed') => {
     if (isAutoEndingRef.current) return
@@ -898,86 +968,95 @@ function PlayPageContent() {
         onConfirm={handleEndTrip}
       />
 
-      <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
-        <div className="flex items-center gap-6">
-          <StatusIndicator
-            status={gpsStatus === 'active' ? 'ok' : gpsStatus === 'low-accuracy' ? 'warning' : 'error'}
-            label="GPS"
-            sublabel={
-              gpsStatus === 'active' ? '受信中' : gpsStatus === 'low-accuracy' ? '精度低下' : '未受信'
-            }
-            size="lg"
-          />
-          <StatusIndicator
-            status={serverStatus === 'connected' ? 'ok' : 'error'}
-            label="サーバー"
-            sublabel={serverStatus === 'connected' ? '接続中' : '切断'}
-            size="lg"
-          />
-          <StatusIndicator
-            status="error"
-            label="MQTT"
-            sublabel="未接続"
-            size="lg"
-          />
-        </div>
+      <div className="flex flex-1 overflow-hidden">
+        {/* 左 2/3: ステータスバー + 地図 */}
+        <div className="flex w-2/3 flex-col">
+          <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-4 py-3">
+            <div className="flex items-center gap-6">
+              <StatusIndicator
+                status={gpsStatus === 'active' ? 'ok' : gpsStatus === 'low-accuracy' ? 'warning' : 'error'}
+                label="GPS"
+                sublabel={
+                  gpsStatus === 'active' ? '受信中' : gpsStatus === 'low-accuracy' ? '精度低下' : '未受信'
+                }
+                size="lg"
+              />
+              <StatusIndicator
+                status={serverStatus === 'connected' ? 'ok' : 'error'}
+                label="サーバー"
+                sublabel={serverStatus === 'connected' ? '接続中' : '切断'}
+                size="lg"
+              />
+              <StatusIndicator
+                status="error"
+                label="MQTT"
+                sublabel="未接続"
+                size="lg"
+              />
+            </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center gap-1">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
-              <Radio className="h-5 w-5 text-brand-orange" />
-              <div className="text-lg">
-                <span className="text-muted-foreground">再生中: </span>
-                <span className="font-medium text-foreground">{playingLabel}</span>
+            <div className="flex flex-1 flex-col items-center justify-center gap-1">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3">
+                  <Radio className="h-5 w-5 text-brand-orange" />
+                  <div className="text-lg">
+                    <span className="text-muted-foreground">再生中: </span>
+                    <span className="font-medium text-foreground">{playingLabel}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-lg text-muted-foreground">待機中: {queueCount}件</span>
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {nextTarget ? (
+                  <>次：{nextTarget.displayName ?? '地点'} / {nextTarget.contentTitle}</>
+                ) : (
+                  <>次の再生コンテンツはありません</>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Volume2 className="h-5 w-5 text-muted-foreground" />
-              <span className="text-lg text-muted-foreground">待機中: {queueCount}件</span>
+
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <span className="text-lg text-muted-foreground">バス案内音声</span>
+                <Switch
+                  checked={externalAudio}
+                  onCheckedChange={handleExternalAudioToggle}
+                  className="data-[state=checked]:bg-brand-orange"
+                />
+                <span className="min-w-[40px] text-lg font-medium text-foreground">
+                  {externalAudio ? 'ON' : 'OFF'}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handleEndTripConfirmation}
+                className="min-h-[44px] gap-2 border-destructive text-destructive hover:bg-destructive hover:text-white"
+              >
+                <Power className="h-5 w-5" />
+                <span className="text-lg">運行終了</span>
+              </Button>
             </div>
           </div>
-          <div className="text-sm text-muted-foreground">
-            {nextTarget ? (
-              <>次：{nextTarget.displayName ?? '地点'} / {nextTarget.contentTitle}</>
-            ) : (
-              <>次の再生コンテンツはありません</>
-            )}
-          </div>
-        </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3">
-            <span className="text-lg text-muted-foreground">バス案内音声</span>
-            <Switch
-              checked={externalAudio}
-              onCheckedChange={handleExternalAudioToggle}
-              className="data-[state=checked]:bg-brand-orange"
+          <div className="flex-1">
+            <PlayMap
+              routePoints={routePoints}
+              items={mapItems}
+              currentPosition={currentPosition}
+              playingItemId={playingItemId ?? undefined}
+              playedItemIds={[...playedItemIds]}
+              shapePoints={shapePoints}
+              splitItem={splitItem}
+              triggerRadiusM={TRIGGER_RADIUS_M}
             />
-            <span className="min-w-[40px] text-lg font-medium text-foreground">
-              {externalAudio ? 'ON' : 'OFF'}
-            </span>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleEndTripConfirmation}
-            className="min-h-[44px] gap-2 border-destructive text-destructive hover:bg-destructive hover:text-white"
-          >
-            <Power className="h-5 w-5" />
-            <span className="text-lg">運行終了</span>
-          </Button>
         </div>
-      </div>
 
-      <div className="flex-1">
-        <PlayMap
-          routePoints={routePoints}
-          items={mapItems}
-          currentPosition={currentPosition}
-          playingItemId={playingItemId ?? undefined}
-          playedItemIds={[...playedItemIds]}
-          shapePoints={shapePoints}
-          splitItem={splitItem}
-        />
+        {/* 右 1/3: 台本パネル */}
+        <ScriptPanel entries={scriptEntries} />
       </div>
     </div>
   )

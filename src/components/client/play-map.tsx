@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Marker, Popup, Circle, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { publicEnv } from '@/lib/env'
@@ -28,6 +28,7 @@ interface PlayMapProps {
   playedItemIds?: string[]
   shapePoints?: { lat: number; lng: number }[]
   splitItem?: { lat: number; lng: number } | null
+  triggerRadiusM?: number
 }
 
 // 現在位置マーカー（青い丸）
@@ -106,6 +107,7 @@ export default function PlayMap({
   playedItemIds = [],
   shapePoints,
   splitItem,
+  triggerRadiusM = 10,
 }: PlayMapProps) {
   // shapes があれば優先、なければ routePoints にフォールバック
   const basePoints = shapePoints && shapePoints.length > 1 ? shapePoints : routePoints
@@ -160,14 +162,28 @@ export default function PlayMap({
         />
       )}
 
+      {/* 近接判定半径円（ピンより背面に描画） */}
+      {items.map((item) => (
+        <Circle
+          key={`circle-${item.id}`}
+          center={[item.position.lat, item.position.lng]}
+          radius={triggerRadiusM}
+          pathOptions={{
+            color: '#FA5012',
+            fillColor: '#FEDCD0',
+            fillOpacity: 0.3,
+            weight: 1,
+            interactive: false,
+          }}
+        />
+      ))}
+
       {/* コンテンツピン */}
-      {items.map((item, index) => {
+      {items.map((item) => {
         const status = item.id === playingItemId
           ? 'playing'
           : playedItemIds.includes(item.id)
           ? 'played'
-          : index === 0 && !playingItemId
-          ? 'playing'
           : 'waiting'
 
         return (
