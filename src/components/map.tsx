@@ -32,6 +32,8 @@ export interface MapProps {
   selectedMarkerId?: string | null
   triggerRadiusM?: number
   simulationPosition?: { lat: number; lng: number } | null
+  simulationCurrentItemId?: string | null
+  simulationPlayedItemIds?: string[]
   onMapClick?: (position: { lat: number; lng: number }) => void
   onMarkerClick?: (markerId: string) => void
   onStopMarkerClick?: (index: number) => void
@@ -55,11 +57,21 @@ function createStopIcon(num: number, fillColor: string, size: number): L.DivIcon
   })
 }
 
-// 音声コンテンツ位置ピン（ブランドカラーの涙形ピン）
-function createContentMarkerIcon(isSelected: boolean): L.DivIcon {
-  const pinColor  = isSelected ? '#2563EB' : '#FA5012'
-  const ringColor = isSelected ? 'rgba(37,99,235,0.25)' : 'rgba(250,80,18,0.25)'
-  const size = isSelected ? 36 : 32
+// 音声コンテンツ位置ピン（涙形ピン）
+function createContentMarkerIcon(status: 'selected' | 'playing' | 'played' | 'waiting'): L.DivIcon {
+  const pinColor = {
+    selected: '#2563EB',
+    playing:  '#4D9B6F',
+    played:   '#9AA0AB',
+    waiting:  '#FA5012',
+  }[status]
+  const ringColor = {
+    selected: 'rgba(37,99,235,0.25)',
+    playing:  'rgba(77,155,111,0.25)',
+    played:   'rgba(154,160,171,0.25)',
+    waiting:  'rgba(250,80,18,0.25)',
+  }[status]
+  const size = status === 'selected' ? 36 : 32
   const anchorY = size - 2
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 32 40">
@@ -175,6 +187,8 @@ export function MapView({
   selectedMarkerId,
   triggerRadiusM = 10,
   simulationPosition = null,
+  simulationCurrentItemId,
+  simulationPlayedItemIds,
   onMapClick,
   onMarkerClick,
   onStopMarkerClick,
@@ -195,6 +209,10 @@ export function MapView({
     if (!containerRef.current || mapRef.current) return
 
     mapRef.current = L.map(containerRef.current).setView([center.lat, center.lng], zoom)
+
+    // シミュレーション現在位置をポリラインより前面に出すカスタムペイン
+    const simPane = mapRef.current.createPane('simPosition')
+    simPane.style.zIndex = '450'
 
     L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${publicEnv.NEXT_PUBLIC_MAPTILER_KEY}`, {
       attribution: '© <a href="https://www.maptiler.com/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
@@ -309,6 +327,14 @@ export function MapView({
 
     markers.forEach((m) => {
       const isSelected = m.id === selectedMarkerId
+      const status = (() => {
+        if (simulationCurrentItemId !== undefined) {
+          if (m.id === simulationCurrentItemId) return 'playing' as const
+          if (simulationPlayedItemIds?.includes(m.id)) return 'played' as const
+          return 'waiting' as const
+        }
+        return isSelected ? 'selected' as const : 'waiting' as const
+      })()
 
       // 近接判定半径を示す半透明円（ピンより先に addTo して背面に置く）
       const radiusCircle = L.circle([m.position.lat, m.position.lng], {
@@ -322,9 +348,9 @@ export function MapView({
       }).addTo(mapRef.current!)
       radiusCirclesRef.current.set(m.id, radiusCircle)
 
-      // ブランドカラーの涙形ピン
+      // 涙形ピン
       const marker = L.marker([m.position.lat, m.position.lng], {
-        icon: createContentMarkerIcon(isSelected),
+        icon: createContentMarkerIcon(status),
         zIndexOffset: isSelected ? 100 : 0,
       }).addTo(mapRef.current!)
 
@@ -338,7 +364,7 @@ export function MapView({
 
       markersRef.current.set(m.id, marker)
     })
-  }, [markers, selectedMarkerId, triggerRadiusM, onMarkerClick])
+  }, [markers, selectedMarkerId, triggerRadiusM, onMarkerClick, simulationCurrentItemId, simulationPlayedItemIds])
 
   // シミュレーション現在位置マーカー（青い丸）
   useEffect(() => {
@@ -348,6 +374,7 @@ export function MapView({
         simMarkerRef.current.setLatLng([simulationPosition.lat, simulationPosition.lng])
       } else {
         simMarkerRef.current = L.circleMarker([simulationPosition.lat, simulationPosition.lng], {
+          pane: 'simPosition',
           radius: 8,
           color: '#1D4ED8',
           weight: 2,

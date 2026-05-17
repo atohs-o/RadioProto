@@ -8,7 +8,6 @@ import { StatusIndicator } from '@/components/client/status-indicator'
 import { OfflineBanner } from '@/components/client/offline-banner'
 import { GpsLostBanner } from '@/components/client/gps-lost-banner'
 import { PlaybackErrorDialog } from '@/components/client/playback-error-dialog'
-import { EndTripDialog } from '@/components/client/end-trip-dialog'
 import { LowProgressDialog } from '@/components/client/low-progress-dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -16,6 +15,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/hooks/use-toast'
 import { haversineDistance, smoothGps } from '@/lib/geo'
 import { createLocationChannel, sendLocation } from '@/lib/realtime'
+import { tripLogger } from '@/lib/trip-logger'
 import type { ClientProgram, ClientProgramItem } from '@/lib/schemas/client'
 import type { GpsStatus, ServerStatus } from '@/lib/types'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -32,6 +32,9 @@ const OFFLINE_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_OFFLINE_TIMEOUT_MIN ??
 const PASS_THROUGH_MARGIN_M = 20
 const AUDIO_CACHE = 'autodj-audio-v1'
 const LOCATION_LOG_INTERVAL_MS = 30_000
+const DISTANCE_LOG_NORMAL_MS = 10_000
+const DISTANCE_LOG_NEAR_MS = 1_000
+const DISTANCE_LOG_NEAR_THRESHOLD_M = 100
 
 function PlayPageContent() {
   const router = useRouter()
@@ -48,7 +51,6 @@ function PlayPageContent() {
   const [playedItemIds, setPlayedItemIds] = useState<Set<string>>(new Set())
   const [queueCount, setQueueCount] = useState(0)
   const [externalAudio, setExternalAudio] = useState(false)
-  const [showEndTripDialog, setShowEndTripDialog] = useState(false)
   const [showPlaybackError, setShowPlaybackError] = useState(false)
   const [errorContentTitle, setErrorContentTitle] = useState<string | undefined>()
   const [isLoading, setIsLoading] = useState(true)
@@ -84,6 +86,9 @@ function PlayPageContent() {
   const waypointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const advanceToNextSequenceRef = useRef<() => void>(() => {})
   const lastSeenSequenceIdxRef = useRef<number>(-1)
+  const prevGpsStatusRef = useRef<GpsStatus | null>(null)
+  const prevServerStatusRef = useRef<ServerStatus | null>(null)
+  const lastDistanceLogTimeRef = useRef<number>(0)
   // 自動終了管理
   const terminalItemRef = useRef<ClientProgramItem | null>(null)
   const terminateFlagRef = useRef<boolean>(false)
@@ -161,6 +166,7 @@ function PlayPageContent() {
       clearTimeout(waypointTimerRef.current)
       waypointTimerRef.current = null
     }
+    const fromIdx = currentSequenceIdxRef.current
     currentSequenceIdxRef.current += 1
     hasEnteredRadiusRef.current = false
     minDistanceToTargetRef.current = Infinity
@@ -175,6 +181,9 @@ function PlayPageContent() {
 
     const idx = currentSequenceIdxRef.current
     if (idx >= items.length) {
+      if (tripIdRef.current) {
+        tripLogger.log(tripIdRef.current, 'sequence_advanced', { from: fromIdx, to: idx, locationName: null })
+      }
       if (!terminateFlagRef.current) {
         terminateTypeRef.current = 'auto_completed'
         terminateFlagRef.current = true
@@ -184,6 +193,13 @@ function PlayPageContent() {
     }
 
     const nextTarget = items[idx]
+    if (tripIdRef.current) {
+      tripLogger.log(tripIdRef.current, 'sequence_advanced', {
+        from: fromIdx,
+        to: idx,
+        locationName: nextTarget.displayName ?? nextTarget.contentTitle ?? null,
+      })
+    }
 
     waypointTimerRef.current = setTimeout(() => {
       if (!hasEnteredRadiusRef.current) {
@@ -304,6 +320,12 @@ function PlayPageContent() {
           isPlayingRef.current = false
           currentPlayingItemRef.current = null
           setPlayingItemId(null)
+          if (tripIdRef.current) {
+            tripLogger.log(tripIdRef.current, 'playback_error', {
+              audioFileId: item.audioFileId,
+              reason: 'audio_error',
+            })
+          }
           setErrorContentTitle(item.displayName ?? item.contentTitle)
           setShowPlaybackError(true)
 
@@ -322,6 +344,12 @@ function PlayPageContent() {
       isPlayingRef.current = false
       currentPlayingItemRef.current = null
       setPlayingItemId(null)
+      if (tripIdRef.current) {
+        tripLogger.log(tripIdRef.current, 'playback_error', {
+          audioFileId: item.audioFileId,
+          reason: 'fetch_error',
+        })
+      }
       setErrorContentTitle(item.displayName ?? item.contentTitle)
       setShowPlaybackError(true)
     }
@@ -366,6 +394,20 @@ function PlayPageContent() {
 
       const target = items[idx]
       const dist = haversineDistance(smoothed, { lat: target.lat, lng: target.lng })
+
+      // 距離適応ログ（通常 10秒 / POI 100m以内なら 1秒 ごと）
+      const now = Date.now()
+      const logInterval = dist <= DISTANCE_LOG_NEAR_THRESHOLD_M ? DISTANCE_LOG_NEAR_MS : DISTANCE_LOG_NORMAL_MS
+      if (tripIdRef.current && now - lastDistanceLogTimeRef.current >= logInterval) {
+        lastDistanceLogTimeRef.current = now
+        tripLogger.log(tripIdRef.current, 'location_update', {
+          lat: smoothed.lat,
+          lng: smoothed.lng,
+          accuracy: position.coords.accuracy,
+          distanceToTarget: Math.round(dist),
+          sequenceIdx: idx,
+        })
+      }
 
       if (dist <= TRIGGER_RADIUS_M) {
         hasEnteredRadiusRef.current = true
@@ -455,6 +497,8 @@ function PlayPageContent() {
         const { tripId } = (await tripRes.json()) as { tripId: string }
         tripIdRef.current = tripId
         localStorage.setItem('current_trip_id', tripId)
+        tripLogger.setToken(token)
+        tripLogger.log(tripId, 'trip_started', { programId: programId ?? '' })
 
         // 4-2: 最大運行時間タイムアウト
         maxTripTimerRef.current = setTimeout(() => {
@@ -611,6 +655,36 @@ function PlayPageContent() {
     }
   }, [serverStatus, isLoading, initError])
 
+  // ログ: GPS断絶/復帰
+  useEffect(() => {
+    if (isLoading || !tripIdRef.current) return
+    if (prevGpsStatusRef.current === null) {
+      prevGpsStatusRef.current = gpsStatus
+      return
+    }
+    if (prevGpsStatusRef.current !== 'inactive' && gpsStatus === 'inactive') {
+      tripLogger.log(tripIdRef.current, 'gps_lost', {})
+    } else if (prevGpsStatusRef.current === 'inactive' && gpsStatus !== 'inactive') {
+      tripLogger.log(tripIdRef.current, 'gps_recovered', {})
+    }
+    prevGpsStatusRef.current = gpsStatus
+  }, [gpsStatus, isLoading])
+
+  // ログ: サーバー切断/復帰
+  useEffect(() => {
+    if (isLoading || !tripIdRef.current) return
+    if (prevServerStatusRef.current === null) {
+      prevServerStatusRef.current = serverStatus
+      return
+    }
+    if (prevServerStatusRef.current === 'connected' && serverStatus === 'disconnected') {
+      tripLogger.log(tripIdRef.current, 'server_lost', {})
+    } else if (prevServerStatusRef.current === 'disconnected' && serverStatus === 'connected') {
+      tripLogger.log(tripIdRef.current, 'server_recovered', {})
+    }
+    prevServerStatusRef.current = serverStatus
+  }, [serverStatus, isLoading])
+
   const handleExternalAudioToggle = useCallback(
     (checked: boolean) => {
       externalAudioRef.current = checked
@@ -677,7 +751,20 @@ function PlayPageContent() {
     if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current)
     if (broadcastChannelRef.current) broadcastChannelRef.current.unsubscribe()
 
+    const endEventType =
+      type === 'timeout' ? 'timeout_ended' as const :
+      type === 'offline' ? 'abnormal_ended' as const :
+      'trip_ended' as const
+    if (tripIdRef.current) {
+      tripLogger.log(tripIdRef.current, endEventType, {
+        reason: type,
+        totalSequences: sortedItemsRef.current.filter((i) => i.audioFileId).length,
+        completedSequences: playedItemIdsRef.current.size,
+      })
+    }
+
     router.replace('/client/wait')
+    tripLogger.destroy()
   }, [router, toast])
 
   useEffect(() => {
@@ -685,8 +772,6 @@ function PlayPageContent() {
   }, [handleAutoEndTrip])
 
   const handleEndTrip = useCallback(async () => {
-    setShowEndTripDialog(false)
-
     // 再生中なら cancelled 記録
     if (isPlayingRef.current && currentPlayingItemRef.current) {
       recordPlaybackEvent(currentPlayingItemRef.current.id, 'cancelled')
@@ -717,8 +802,44 @@ function PlayPageContent() {
     localStorage.setItem('last_trip_ended_at', JSON.stringify({ time: `${hh}:${mm}`, type: 'manual' }))
     localStorage.removeItem('current_trip_id')
 
+    if (tripIdRef.current) {
+      tripLogger.log(tripIdRef.current, 'trip_ended', {
+        reason: 'manual',
+        totalSequences: sortedItemsRef.current.filter((i) => i.audioFileId).length,
+        completedSequences: playedItemIdsRef.current.size,
+      })
+    }
+
     router.replace('/client/wait')
+    tripLogger.destroy()
   }, [recordPlaybackEvent, router])
+
+  const handleEndTripConfirmation = useCallback(() => {
+    // dismiss は toast() の戻り値で得るため、閉じ込めるための container を先に作る
+    const dismissRef = { fn: (() => {}) as () => void }
+    const { dismiss } = toast({
+      title: '運行を終了しますか？',
+      description: (
+        <div className="mt-3 flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1 bg-destructive text-white hover:bg-destructive/90"
+            onClick={() => {
+              dismissRef.fn()
+              handleEndTrip()
+            }}
+          >
+            終了する
+          </Button>
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => dismissRef.fn()}>
+            キャンセル
+          </Button>
+        </div>
+      ),
+      duration: Infinity,
+    })
+    dismissRef.fn = dismiss
+  }, [toast, handleEndTrip])
 
   if (isLoading) {
     return (
@@ -769,12 +890,6 @@ function PlayPageContent() {
         contentTitle={errorContentTitle}
         onSkip={() => setShowPlaybackError(false)}
         onRetry={() => setShowPlaybackError(false)}
-      />
-
-      <EndTripDialog
-        open={showEndTripDialog}
-        onOpenChange={setShowEndTripDialog}
-        onConfirm={handleEndTrip}
       />
 
       <LowProgressDialog
@@ -844,7 +959,7 @@ function PlayPageContent() {
           </div>
           <Button
             variant="outline"
-            onClick={() => setShowEndTripDialog(true)}
+            onClick={handleEndTripConfirmation}
             className="min-h-[44px] gap-2 border-destructive text-destructive hover:bg-destructive hover:text-white"
           >
             <Power className="h-5 w-5" />

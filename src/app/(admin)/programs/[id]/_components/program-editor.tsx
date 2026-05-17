@@ -96,6 +96,8 @@ export function ProgramEditor({
   const [gtfsDialogOpen, setGtfsDialogOpen] = useState(false)
   const [shapes, setShapes] = useState<GTFSShape[]>(initialProgram.shapes ?? [])
   const [simPosition, setSimPosition] = useState<{ lat: number; lng: number } | null>(null)
+  const [simCurrentItemId, setSimCurrentItemId] = useState<string | null>(null)
+  const [simPlayedItemIds, setSimPlayedItemIds] = useState<string[]>([])
   const [importedStops, setImportedStops] = useState<GTFSStop[]>([])
   // バス停ホバー連動
   const [highlightedStopIndex, setHighlightedStopIndex] = useState<number | null>(null)
@@ -271,6 +273,10 @@ export function ProgramEditor({
           }))}
           shapes={shapes}
           onPositionChange={setSimPosition}
+          onCurrentItemChange={(id, played) => {
+            setSimCurrentItemId(id)
+            setSimPlayedItemIds(played)
+          }}
         />
         <div className="relative flex-1 min-h-0">
           {isRelocating && (
@@ -290,6 +296,8 @@ export function ProgramEditor({
             selectedMarkerId={selectedMarkerId}
             triggerRadiusM={Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')}
             simulationPosition={simPosition}
+            simulationCurrentItemId={simCurrentItemId}
+            simulationPlayedItemIds={simPlayedItemIds}
             showSearch
             onMapClick={(pos) => {
               if (isRelocatingRef.current && editingItem) {

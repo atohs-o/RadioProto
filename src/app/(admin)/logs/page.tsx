@@ -25,8 +25,23 @@ import {
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { ErrorState } from '@/components/common/error-state'
 import type { Trip, PlayEvent, Bus } from '@/types'
-import { FileText } from 'lucide-react'
+import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  FileText,
+  MapPin,
+  MapPinOff,
+  Navigation,
+  Play,
+  Shield,
+  SkipForward,
+  Square,
+  Wifi,
+  WifiOff,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { ElementType } from 'react'
 
 async function fetchBuses(): Promise<Bus[]> {
   const res = await fetch('/api/admin/buses')
@@ -47,6 +62,34 @@ async function fetchEvents(tripId: string): Promise<PlayEvent[]> {
   const res = await fetch(`/api/admin/trips/${tripId}/events`)
   if (!res.ok) throw new Error('再生イベントの取得に失敗しました')
   return res.json() as Promise<PlayEvent[]>
+}
+
+type TripSystemEvent = {
+  id: string
+  event_type: string
+  metadata: Record<string, unknown>
+  occurred_at: string
+}
+
+async function fetchSystemEvents(tripId: string): Promise<TripSystemEvent[]> {
+  const res = await fetch(`/api/admin/trips/${tripId}/trip-events`)
+  if (!res.ok) throw new Error('システムイベントの取得に失敗しました')
+  return res.json() as Promise<TripSystemEvent[]>
+}
+
+const EVENT_CONFIG: Record<string, { label: string; icon: ElementType; className: string }> = {
+  trip_started:    { label: '運行開始',             icon: Play,          className: 'text-green-600' },
+  trip_ended:      { label: '運行終了',             icon: Square,        className: 'text-muted-foreground' },
+  abnormal_ended:  { label: '異常終了',             icon: AlertTriangle, className: 'text-destructive' },
+  timeout_ended:   { label: 'タイムアウト終了',     icon: AlertTriangle, className: 'text-yellow-500' },
+  sequence_advanced:{ label: 'Sequence進行',        icon: SkipForward,   className: 'text-orange-500' },
+  gps_lost:        { label: 'GPS断絶',             icon: MapPinOff,     className: 'text-destructive' },
+  gps_recovered:   { label: 'GPS復帰',             icon: MapPin,        className: 'text-green-600' },
+  server_lost:     { label: 'サーバー切断',         icon: WifiOff,       className: 'text-destructive' },
+  server_recovered:{ label: 'サーバー復帰',         icon: Wifi,          className: 'text-green-600' },
+  auth_failed:     { label: '認証失敗',             icon: Shield,        className: 'text-destructive' },
+  playback_error:  { label: '音声エラー',           icon: AlertCircle,   className: 'text-destructive' },
+  location_update: { label: '位置更新',             icon: Navigation,    className: 'text-muted-foreground/60' },
 }
 
 function formatDateTime(dateString: string): string {
@@ -110,6 +153,10 @@ export default function LogsPage() {
   const { data: playEvents, isLoading: isLoadingEvents, error: eventsError, mutate: mutateEvents } = useSWR<PlayEvent[]>(
     selectedTripId ? ['playEvents', selectedTripId] : null,
     () => selectedTripId ? fetchEvents(selectedTripId) : Promise.resolve([])
+  )
+  const { data: systemEvents, isLoading: isLoadingSystemEvents } = useSWR<TripSystemEvent[]>(
+    selectedTripId ? ['systemEvents', selectedTripId] : null,
+    () => selectedTripId ? fetchSystemEvents(selectedTripId) : Promise.resolve([])
   )
 
   const selectedTrip = useMemo(() => {
@@ -213,7 +260,8 @@ export default function LogsPage() {
           </CardContent>
         </Card>
 
-        <Card className="md:w-3/5">
+        <div className="flex md:w-3/5 flex-col gap-4">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">
               再生イベント
@@ -278,6 +326,63 @@ export default function LogsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* システムイベントタイムライン */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              システムイベント
+              {selectedTrip && (
+                <span className="ml-2 font-normal text-muted-foreground">
+                  (location_update 除く)
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!selectedTripId ? (
+              <Empty className="py-6">
+                <EmptyMedia><FileText className="size-6" /></EmptyMedia>
+                <EmptyTitle>運行を選択してください</EmptyTitle>
+              </Empty>
+            ) : isLoadingSystemEvents ? (
+              <div className="flex items-center justify-center py-8">
+                <Spinner className="size-5" />
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-auto px-4 py-2 space-y-0.5">
+                {(systemEvents ?? [])
+                  .filter((e) => e.event_type !== 'location_update')
+                  .map((e) => {
+                    const cfg = EVENT_CONFIG[e.event_type] ?? { label: e.event_type, icon: Activity, className: '' }
+                    const Icon = cfg.icon
+                    const meta = Object.entries(e.metadata)
+                      .filter(([k]) => k !== 'lat' && k !== 'lng')
+                      .map(([k, v]) => `${k}: ${String(v)}`)
+                      .join(' / ')
+                    return (
+                      <div key={e.id} className="flex items-start gap-2 text-sm py-1 border-b border-border/40 last:border-0">
+                        <span className="text-muted-foreground w-12 shrink-0 tabular-nums">
+                          {formatTime(e.occurred_at)}
+                        </span>
+                        <Icon className={cn('h-4 w-4 shrink-0 mt-0.5', cfg.className)} />
+                        <span className="font-medium shrink-0">{cfg.label}</span>
+                        {meta && (
+                          <span className="text-muted-foreground truncate">{meta}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                {(systemEvents ?? []).filter((e) => e.event_type !== 'location_update').length === 0 && (
+                  <p className="py-4 text-center text-sm text-muted-foreground">
+                    システムイベントがありません
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        </div>
       </div>
     </div>
   )

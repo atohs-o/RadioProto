@@ -842,6 +842,38 @@ export type Database = {
           },
         ]
       }
+      trip_events: {
+        Row: {
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          trip_id: string
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          trip_id: string
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_events_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trip_playback_events: {
         Row: {
           created_at: string

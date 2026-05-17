@@ -26,6 +26,7 @@ interface SimulationPanelProps {
   items: SimProgramItem[]
   shapes: GTFSShape[]
   onPositionChange: (pos: { lat: number; lng: number } | null) => void
+  onCurrentItemChange?: (currentItemId: string | null, playedItemIds: string[]) => void
 }
 
 function interpolatePosition(
@@ -56,7 +57,7 @@ function interpolatePosition(
   }
 }
 
-export function SimulationPanel({ items, shapes, onPositionChange }: SimulationPanelProps) {
+export function SimulationPanel({ items, shapes, onPositionChange, onCurrentItemChange }: SimulationPanelProps) {
   const [simState, setSimState] = useState<SimState>('idle')
   const [speedInput, setSpeedInput] = useState('30')
   const [displaySeqIdx, setDisplaySeqIdx] = useState(0)
@@ -78,8 +79,10 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
   const itemsWithAudioRef = useRef<SimProgramItem[]>([])
   const isRunningRef = useRef(false)
   const onPositionChangeRef = useRef(onPositionChange)
+  const onCurrentItemChangeRef = useRef(onCurrentItemChange)
 
   useEffect(() => { onPositionChangeRef.current = onPositionChange }, [onPositionChange])
+  useEffect(() => { onCurrentItemChangeRef.current = onCurrentItemChange }, [onCurrentItemChange])
 
   useEffect(() => {
     itemsWithAudioRef.current = items.filter((i) => i.audioFileId)
@@ -169,10 +172,15 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
 
     const audioItems = itemsWithAudioRef.current
     if (nextIdx >= audioItems.length) {
+      onCurrentItemChangeRef.current?.(null, audioItems.map((i) => i.id))
       setDisplayStatus('待機中')
       return
     }
 
+    onCurrentItemChangeRef.current?.(
+      audioItems[nextIdx].id,
+      audioItems.slice(0, nextIdx).map((i) => i.id),
+    )
     setDisplayStatus('移動中')
     const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000 * BASE_KMH) / speedKmhRef.current
     waypointTimerRef.current = setTimeout(() => {
@@ -201,6 +209,7 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
     setSimState('idle')
     setDisplayStatus('待機中')
     onPositionChangeRef.current(null)
+    onCurrentItemChangeRef.current?.(null, [])
   }, [clearAudio])
 
   const doStopRef = useRef(doStop)
@@ -265,6 +274,8 @@ export function SimulationPanel({ items, shapes, onPositionChange }: SimulationP
     setDisplayStatus('移動中')
 
     const audioItems = itemsWithAudioRef.current
+    onCurrentItemChangeRef.current?.(audioItems[0]?.id ?? null, [])
+
     if (audioItems.length > 0) {
       const timeoutMs = (WAYPOINT_TIMEOUT_MIN * 60_000 * BASE_KMH) / speedKmhRef.current
       waypointTimerRef.current = setTimeout(() => {

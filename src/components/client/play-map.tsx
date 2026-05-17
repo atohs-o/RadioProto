@@ -47,39 +47,39 @@ const currentPositionIcon = L.divIcon({
   iconAnchor: [10, 10],
 })
 
-// コンテンツピンアイコン生成
+// コンテンツピンアイコン生成（涙型+音符）
 function createPinIcon(status: 'waiting' | 'playing' | 'played'): L.DivIcon {
-  const colors = {
-    waiting: '#FA5012',  // ブランドオレンジ
-    playing: '#4D9B6F',  // 緑
-    played: '#9AA0AB',   // グレー
-  }
-  const color = colors[status]
+  const color = {
+    waiting: '#FA5012',
+    playing: '#4D9B6F',
+    played:  '#9AA0AB',
+  }[status]
+  const ringColor = {
+    waiting: 'rgba(250,80,18,0.25)',
+    playing: 'rgba(77,155,111,0.25)',
+    played:  'rgba(154,160,171,0.25)',
+  }[status]
+  const size = 32
+  const anchorY = size - 2
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 32 40">
+    <defs>
+      <filter id="ps" x="-30%" y="-20%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="${color}" flood-opacity="0.45"/>
+      </filter>
+    </defs>
+    <circle cx="16" cy="13" r="12" fill="${ringColor}" stroke="none"/>
+    <path d="M16 2C10.477 2 6 6.477 6 12C6 19.5 16 30 16 30C16 30 26 19.5 26 12C26 6.477 21.523 2 16 2Z"
+      fill="${color}" stroke="white" stroke-width="2" stroke-linejoin="round" filter="url(#ps)"/>
+    <circle cx="16" cy="12" r="5.5" fill="white" fill-opacity="0.92"/>
+    <text x="16" y="15.5" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="700" fill="${color}">♪</text>
+  </svg>`
 
   return L.divIcon({
-    className: 'content-pin-marker',
-    html: `
-      <div style="
-        width: 24px;
-        height: 24px;
-        background-color: ${color};
-        border: 2px solid white;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      ">
-        <div style="
-          width: 8px;
-          height: 8px;
-          background-color: white;
-          border-radius: 50%;
-        "></div>
-      </div>
-    `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
+    html: svg,
+    className: '',
+    iconSize:   [size, Math.round(size * 1.25)],
+    iconAnchor: [size / 2, anchorY],
   })
 }
 
