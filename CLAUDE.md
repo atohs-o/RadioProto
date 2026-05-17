@@ -103,7 +103,46 @@ getServerEnv()       // サーバー専用シークレット（Server Component 
 
 詳細は `.claude/rules/client-playback.md` を参照（車内クライアントフロー・音声経路・revalidatePath）。
 
-### 3-4. スキーマ定義の二重構造（重要）
+### 3-4. 車内クライアントの localStorage キー
+
+3ページ間で共有する。キー名・値の構造を変える場合は参照箇所を全て合わせる。
+
+| キー | 型 | 書き込み | 読み取り |
+|---|---|---|---|
+| `deviceToken` | `string` | `/client/setup` | play / wait / select |
+| `current_trip_id` | `string` (UUID) | play（trip開始時） | wait（クラッシュ検出） |
+| `last_trip_ended_at` | `{ time: string, type: TripEndType }` | play / wait | wait（前回終了ステータス表示） |
+
+`TripEndType` = `'auto'` / `'completed'` / `'timeout'` / `'offline'` / `'manual'` / `'abnormal'`
+
+- `current_trip_id` が残った状態で wait を開いた場合 → 未クローズ trip を強制 PATCH して `abnormal` で記録
+- `last_trip_ended_at.type` は wait 画面の「前回〜で終了」文言に使われる
+
+### 3-5. `/client/play` のステート管理パターン（stale closure 対策）
+
+GPS コールバックや音声再生コールバックは `useCallback` のクロージャ外で動くため、最新の状態を参照するために **ref と state の二重管理**を使う。
+
+```
+playedItemIds      (state)  → レンダーを触発するためのみ使用
+playedItemIdsRef   (ref)    → コールバック内でステールにならない最新値
+
+advanceToNextSequence   (useCallback)
+advanceToNextSequenceRef (ref)  → 毎 render 後に useEffect で .current を更新
+```
+
+```typescript
+// パターン: コールバック定義後、ref に詰め直す
+useEffect(() => {
+  advanceToNextSequenceRef.current = advanceToNextSequence
+}, [advanceToNextSequence])
+```
+
+`currentSequenceIdxRef` は state を持たない純粋な ref（レンダー不要なため）。  
+GPS ハンドラや音声コールバックで **`xxxRef.current`** を読み書きし、UI 更新が必要な場合だけ `setXxx()` を呼ぶ。
+
+このパターンを崩すと「前のターゲットのまま判定し続ける」stale closure バグが再発する。
+
+### 3-6. スキーマ定義の二重構造（重要）
 
 `@/lib/schemas` という import パスは **`src/lib/schemas.ts`（フラットファイル）** に解決される。
 `src/lib/schemas/index.ts` はディレクトリ index だが、TypeScript のモジュール解決でフラットファイルが優先されるため **`@/lib/schemas` からは参照されない**。

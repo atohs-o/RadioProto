@@ -22,7 +22,7 @@ export default function WaitPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isClearing, setIsClearing] = useState(false)
 
-  type TripEndType = 'auto' | 'manual' | 'abnormal' | 'timeout' | 'offline' | 'completed'
+  type TripEndType = 'auto_terminal' | 'auto_completed' | 'manual' | 'abnormal' | 'timeout' | 'offline' | 'auto' | 'completed'
   const [lastTripEnd, setLastTripEnd] = useState<{ time: string; type: TripEndType } | null>(null)
 
   const fetchBusState = useCallback(async () => {
@@ -204,16 +204,19 @@ export default function WaitPage() {
               )}
             </div>
             {lastTripEnd && (() => {
-              const map: Record<TripEndType, { text: string; className: string }> = {
-                auto:      { text: `前回 ${lastTripEnd.time} に自動終了`,              className: 'text-sm text-muted-foreground' },
-                manual:    { text: `前回 ${lastTripEnd.time} に手動終了`,              className: 'text-sm text-muted-foreground' },
-                completed: { text: `前回 ${lastTripEnd.time} に全コンテンツ再生完了`, className: 'text-sm text-muted-foreground' },
-                abnormal:  { text: `前回 ${lastTripEnd.time} に異常終了しました`,      className: 'text-sm text-destructive' },
-                timeout:   { text: `前回 ${lastTripEnd.time} にタイムアウト終了しました`, className: 'text-sm text-yellow-500' },
-                offline:   { text: `前回 ${lastTripEnd.time} に接続断で終了しました`,  className: 'text-sm text-yellow-500' },
+              const map: Partial<Record<TripEndType, { text: string; className: string }>> = {
+                auto_terminal: { text: `前回 ${lastTripEnd.time} に終点到着で自動終了`,     className: 'text-sm text-muted-foreground' },
+                auto_completed:{ text: `前回 ${lastTripEnd.time} に全コンテンツ再生完了`,   className: 'text-sm text-muted-foreground' },
+                manual:        { text: `前回 ${lastTripEnd.time} に手動終了`,               className: 'text-sm text-muted-foreground' },
+                abnormal:      { text: `前回 ${lastTripEnd.time} に異常終了しました`,       className: 'text-sm text-destructive' },
+                timeout:       { text: `前回 ${lastTripEnd.time} にタイムアウトで自動終了`, className: 'text-sm text-yellow-500' },
+                offline:       { text: `前回 ${lastTripEnd.time} に接続断で自動終了`,       className: 'text-sm text-yellow-500' },
+                // 旧データ互換
+                auto:          { text: `前回 ${lastTripEnd.time} に自動終了`,               className: 'text-sm text-muted-foreground' },
+                completed:     { text: `前回 ${lastTripEnd.time} に全コンテンツ再生完了`,   className: 'text-sm text-muted-foreground' },
               }
-              const { text, className } = map[lastTripEnd.type]
-              return <p className={className}>{text}</p>
+              const entry = map[lastTripEnd.type] ?? { text: `前回 ${lastTripEnd.time} に終了`, className: 'text-sm text-muted-foreground' }
+              return <p className={entry.className}>{entry.text}</p>
             })()}
           </CardContent>
         </Card>

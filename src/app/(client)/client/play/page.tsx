@@ -83,12 +83,13 @@ function PlayPageContent() {
   const minDistanceToTargetRef = useRef<number>(Infinity)
   const waypointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const advanceToNextSequenceRef = useRef<() => void>(() => {})
+  const lastSeenSequenceIdxRef = useRef<number>(-1)
   // 自動終了管理
   const terminalItemRef = useRef<ClientProgramItem | null>(null)
   const terminateFlagRef = useRef<boolean>(false)
-  const terminateTypeRef = useRef<'auto' | 'timeout' | 'offline' | 'completed'>('auto')
+  const terminateTypeRef = useRef<'auto_terminal' | 'timeout' | 'offline' | 'auto_completed'>('auto_terminal')
   const isAutoEndingRef = useRef<boolean>(false)
-  const handleAutoEndTripRef = useRef<(type: 'auto' | 'timeout' | 'offline' | 'completed') => Promise<void>>(async () => {})
+  const handleAutoEndTripRef = useRef<(type: 'auto_terminal' | 'timeout' | 'offline' | 'auto_completed') => Promise<void>>(async () => {})
   // タイマー管理
   const maxTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const gpsLostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -175,9 +176,9 @@ function PlayPageContent() {
     const idx = currentSequenceIdxRef.current
     if (idx >= items.length) {
       if (!terminateFlagRef.current) {
-        terminateTypeRef.current = 'completed'
+        terminateTypeRef.current = 'auto_completed'
         terminateFlagRef.current = true
-        if (!isPlayingRef.current) handleAutoEndTripRef.current('completed')
+        if (!isPlayingRef.current) handleAutoEndTripRef.current('auto_completed')
       }
       return
     }
@@ -356,6 +357,13 @@ function PlayPageContent() {
       const idx = currentSequenceIdxRef.current
       if (idx >= items.length) return
 
+      // 実機での二重対策: シーケンスが進んでいたらトラッキング状態を強制リセット
+      if (idx !== lastSeenSequenceIdxRef.current) {
+        hasEnteredRadiusRef.current = false
+        minDistanceToTargetRef.current = Infinity
+        lastSeenSequenceIdxRef.current = idx
+      }
+
       const target = items[idx]
       const dist = haversineDistance(smoothed, { lat: target.lat, lng: target.lng })
 
@@ -369,9 +377,11 @@ function PlayPageContent() {
         }
       } else if (
         hasEnteredRadiusRef.current &&
-        dist > minDistanceToTargetRef.current + PASS_THROUGH_MARGIN_M
+        dist > minDistanceToTargetRef.current + PASS_THROUGH_MARGIN_M &&
+        !isPlayingRef.current &&
+        !audioQueueRef.current.some((q) => q.id === target.id)
       ) {
-        // Pattern B: 通過スキップ
+        // Pattern B: 通過スキップ（音声未再生かつ未キューの場合のみ）
         recordPlaybackEvent(target.id, 'skipped').catch(() => {})
         advanceToNextSequenceRef.current()
       }
@@ -391,9 +401,9 @@ function PlayPageContent() {
         if (currentIdx >= 1 && totalCount > 0 && termDist <= TERMINAL_RADIUS_M) {
           if (passedCount / totalCount >= 0.5) {
             // 正常自動終了
-            terminateTypeRef.current = 'auto'
+            terminateTypeRef.current = 'auto_terminal'
             terminateFlagRef.current = true
-            if (!isPlayingRef.current) handleAutoEndTripRef.current('auto')
+            if (!isPlayingRef.current) handleAutoEndTripRef.current('auto_terminal')
           } else if (!lowProgressShownRef.current) {
             // 4-6: 50%未満で終点接近 → ダイアログ表示
             lowProgressShownRef.current = true
@@ -623,9 +633,10 @@ function PlayPageContent() {
     [recordPlaybackEvent],
   )
 
-  const handleAutoEndTrip = useCallback(async (type: 'auto' | 'timeout' | 'offline' | 'completed') => {
+  const handleAutoEndTrip = useCallback(async (type: 'auto_terminal' | 'timeout' | 'offline' | 'auto_completed') => {
     if (isAutoEndingRef.current) return
     isAutoEndingRef.current = true
+    console.log('[AutoEndTrip] 自動終了 type:', type)
 
     const now = new Date()
     const hh = String(now.getHours()).padStart(2, '0')
