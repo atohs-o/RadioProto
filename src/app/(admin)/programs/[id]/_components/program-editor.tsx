@@ -320,8 +320,10 @@ export function ProgramEditor({
       </div>
 
       {/* 右側: 設定パネル (40%) */}
-      <div className="w-[40%] border-l bg-background overflow-y-auto">
-        <div className="flex flex-col gap-4 p-4">
+      <div className="w-[40%] border-l bg-background h-full flex flex-col overflow-hidden">
+
+        {/* 固定トップ: ヘッダー + 基本設定 + GTFSインポート */}
+        <div className="flex flex-col gap-4 p-4 flex-shrink-0">
           {/* ヘッダー */}
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" asChild>
@@ -414,8 +416,10 @@ export function ProgramEditor({
               </Button>
             </CardContent>
           </Card>
+        </div>
 
-          {/* バス停一覧 */}
+        {/* バス停一覧: 固定高さ、内部スクロール */}
+        <div className="px-4 pb-4 flex-shrink-0">
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -485,114 +489,118 @@ export function ProgramEditor({
               )}
             </CardContent>
           </Card>
+        </div>
 
-          {/* 音声コンテンツ */}
-          <Card>
-            <CardHeader className="pb-3">
+        {/* 音声コンテンツ: 残り全高さを占有、内部スクロール */}
+        <div className="flex-1 min-h-0 px-4 pb-4 flex flex-col">
+          <Card className="flex flex-col min-h-0 flex-1">
+            <CardHeader className="flex-shrink-0 pb-3">
               <CardTitle className="text-base">音声コンテンツ</CardTitle>
               <CardDescription>
                 地図をクリックしてピンを追加し、コンテンツと紐付けます
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-4">位置名称</TableHead>
-                    <TableHead>コンテンツ</TableHead>
-                    <TableHead className="w-[70px] text-right">音声長</TableHead>
-                    <TableHead className="w-[90px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {program.items.length === 0 ? (
+            <CardContent className="flex-1 min-h-0 overflow-hidden p-0">
+              <div className="h-full overflow-y-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell
-                        colSpan={4}
-                        className="h-16 text-center text-muted-foreground"
-                      >
-                        紐付けがありません
-                      </TableCell>
+                      <TableHead className="pl-4">位置名称</TableHead>
+                      <TableHead>コンテンツ</TableHead>
+                      <TableHead className="w-[70px] text-right">音声長</TableHead>
+                      <TableHead className="w-[90px]"></TableHead>
                     </TableRow>
-                  ) : (
-                    program.items.map((item) => (
-                      <TableRow
-                        key={item.id}
-                        className={[
-                          'cursor-pointer',
-                          item.id === selectedMarkerId ? 'bg-muted' : '',
-                          !item.audioFileId ? 'opacity-60' : '',
-                        ].join(' ')}
-                        onClick={() =>
-                          setSelectedMarkerId((prev) =>
-                            prev === item.id ? null : item.id
-                          )
-                        }
-                      >
-                        <TableCell className="pl-4 font-medium">
-                          {item.locationName}
-                        </TableCell>
-                        <TableCell className="max-w-[150px] text-sm text-muted-foreground">
-                          <div className="truncate">{item.contentTitle}</div>
-                          {!item.audioFileId && (
-                            <div className="text-xs text-amber-600">音声未生成</div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums">
-                          {formatDuration(item.audioDurationSec)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleEditItem(item.id)
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                              <span className="sr-only">
-                                {item.locationName}を編集
-                              </span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteItem(item.id)
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              <span className="sr-only">
-                                {item.locationName}を削除
-                              </span>
-                            </Button>
-                          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {program.items.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="h-16 text-center text-muted-foreground"
+                        >
+                          紐付けがありません
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      program.items.map((item) => (
+                        <TableRow
+                          key={item.id}
+                          className={[
+                            'cursor-pointer',
+                            item.id === selectedMarkerId ? 'bg-muted' : '',
+                            !item.audioFileId ? 'opacity-60' : '',
+                          ].join(' ')}
+                          onClick={() =>
+                            setSelectedMarkerId((prev) =>
+                              prev === item.id ? null : item.id
+                            )
+                          }
+                        >
+                          <TableCell className="pl-4 font-medium">
+                            {item.locationName}
+                          </TableCell>
+                          <TableCell className="max-w-[150px] text-sm text-muted-foreground">
+                            <div className="truncate">{item.contentTitle}</div>
+                            {!item.audioFileId && (
+                              <div className="text-xs text-amber-600">音声未生成</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {formatDuration(item.audioDurationSec)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleEditItem(item.id)
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                <span className="sr-only">
+                                  {item.locationName}を編集
+                                </span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteItem(item.id)
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="sr-only">
+                                  {item.locationName}を削除
+                                </span>
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
+        </div>
 
+        {/* 固定ボトム: 保存ボタン */}
+        <div className="flex-shrink-0 flex flex-col gap-4 px-4 pb-4">
           {saveError && (
             <p className="text-sm text-destructive">{saveError}</p>
           )}
-
           {saveBanner && (
             <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
               <CheckCircle2 className="size-4 shrink-0" />
               {saveBanner}
             </div>
           )}
-
-          {/* 保存ボタン */}
           <Button
             className="w-full"
             onClick={handleSave}
