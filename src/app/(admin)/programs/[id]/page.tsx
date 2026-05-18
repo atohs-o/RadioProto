@@ -28,6 +28,7 @@ export default async function ProgramEditPage({ params }: ProgramEditPageProps) 
           enabled: true,
           routePoints: [],
           shapes: [],
+          stops: [],
           items: [],
           updatedAt: new Date().toISOString(),
         }}

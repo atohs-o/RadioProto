@@ -98,7 +98,7 @@ export function ProgramEditor({
   const [simPosition, setSimPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [simCurrentItemId, setSimCurrentItemId] = useState<string | null>(null)
   const [simPlayedItemIds, setSimPlayedItemIds] = useState<string[]>([])
-  const [importedStops, setImportedStops] = useState<GTFSStop[]>([])
+  const [importedStops, setImportedStops] = useState<GTFSStop[]>(initialProgram.stops ?? [])
   // バス停ホバー連動
   const [highlightedStopIndex, setHighlightedStopIndex] = useState<number | null>(null)
   const [clickedStopIndex, setClickedStopIndex] = useState<number | null>(null)
@@ -137,7 +137,7 @@ export function ProgramEditor({
   const handleSave = async () => {
     setIsSaving(true)
     setSaveError(null)
-    const result = await saveProgramAction({ ...program, shapes }, isNew)
+    const result = await saveProgramAction({ ...program, shapes, stops: importedStops }, isNew)
     if (result.error) {
       setSaveError(result.error)
       setIsSaving(false)

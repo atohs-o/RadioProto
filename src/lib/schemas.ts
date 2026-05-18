@@ -20,6 +20,12 @@ const programShapeSchema = z.object({
   points: z.array(z.object({ lat: z.number(), lng: z.number(), seq: z.number() })),
 })
 
+const programStopSchema = z.object({
+  stopName: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+})
+
 export const programSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -27,6 +33,7 @@ export const programSchema = z.object({
   groupId: z.string().uuid().optional(),
   routePoints: z.array(z.object({ lat: z.number(), lng: z.number() })),
   shapes: z.array(programShapeSchema).optional(),
+  stops: z.array(programStopSchema).optional(),
   items: z.array(z.object({
     id: z.string().uuid(),
     position: z.object({ lat: z.number(), lng: z.number() }),

@@ -9,6 +9,7 @@ import { ContentMetadataSchema } from '@/lib/schemas/content'
 const RequestSchema = z.object({
   sourceText: z.string().min(1, '元テキストを入力してください').max(20000),
   contentId: z.string().uuid().optional(),
+  title: z.string().optional(),
 })
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -25,8 +26,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? '入力が不正です' }, { status: 400 })
     }
 
-    const { sourceText, contentId } = parsed.data
-    const prompt = buildScriptifyPrompt({ sourceText })
+    const { sourceText, contentId, title } = parsed.data
+    const prompt = buildScriptifyPrompt({ sourceText, title })
     const model = process.env.GEMINI_SCRIPTIFY_MODEL ?? 'gemini-2.5-flash'
 
     const accessToken = await getVertexAccessToken()

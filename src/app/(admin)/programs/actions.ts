@@ -24,6 +24,7 @@ export async function saveProgramAction(
           program_type: 'route_bus',
           is_active: program.enabled,
           group_id: program.groupId ?? null,
+          stops: (program.stops ?? []) as unknown as Json,
           updated_at: new Date().toISOString(),
         })
         .select('id')
@@ -39,6 +40,7 @@ export async function saveProgramAction(
           name: program.name,
           is_active: program.enabled,
           group_id: program.groupId ?? null,
+          stops: (program.stops ?? []) as unknown as Json,
           updated_at: new Date().toISOString(),
         })
         .eq('id', programId)

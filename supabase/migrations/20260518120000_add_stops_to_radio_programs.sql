@@ -1,0 +1,2 @@
+ALTER TABLE radio_programs
+  ADD COLUMN IF NOT EXISTS stops JSONB NOT NULL DEFAULT '[]'::jsonb;

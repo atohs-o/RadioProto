@@ -87,6 +87,7 @@ export function ContentEditClient({ content, groupId }: Props) {
   const [generatingScript, setGeneratingScript] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
   const [audioModalOpen, setAudioModalOpen] = useState(false)
+  const [isPendingAudio, setIsPendingAudio] = useState(false)
   const [ttsModel, setTtsModel] = useState<TtsModelValue>('gemini-2.5-flash-tts')
 
   const [title, setTitle] = useState(content?.title ?? '')
@@ -144,7 +145,7 @@ export function ContentEditClient({ content, groupId }: Props) {
       const res = await fetch('/api/admin/scriptify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceText, contentId: content?.id }),
+        body: JSON.stringify({ sourceText, contentId: content?.id, title }),
       })
       const data = await res.json() as {
         scriptText?: string
@@ -171,7 +172,7 @@ export function ContentEditClient({ content, groupId }: Props) {
     } finally {
       setGeneratingScript(false)
     }
-  }, [sourceText, content])
+  }, [sourceText, content, title])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -214,7 +215,9 @@ export function ContentEditClient({ content, groupId }: Props) {
     setAudioStatus('generated')
     setAllAudioFiles((prev) => [audioFile, ...prev].slice(0, 3))
     setActiveAudioFileId(audioFile.id)
-  }, [])
+    setIsPendingAudio(false)
+    router.refresh()
+  }, [router])
 
   const handleSelectActiveAudio = useCallback((audioFile: AudioFileInfo) => {
     setActiveAudioFileId(audioFile.id)
@@ -422,9 +425,9 @@ export function ContentEditClient({ content, groupId }: Props) {
                     </Select>
 
                     <Button
-                      onClick={() => setAudioModalOpen(true)}
+                      onClick={() => { setIsPendingAudio(true); setAudioModalOpen(true) }}
                       variant={audioStatus === 'generated' ? 'outline' : 'default'}
-                      disabled={!scriptText.trim() || isOverLimit || audioStatus === 'generating'}
+                      disabled={!scriptText.trim() || isOverLimit || audioStatus === 'generating' || isPendingAudio}
                     >
                       {audioStatus === 'generated' ? (
                         <RefreshCw className="mr-2 size-4" />
@@ -441,12 +444,18 @@ export function ContentEditClient({ content, groupId }: Props) {
               )}
             </div>
 
-            {allAudioFiles.length > 0 && (
+            {(allAudioFiles.length > 0 || isPendingAudio) && (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">
                   生成済み音声（{allAudioFiles.length}件）
                 </p>
                 <div className="space-y-3">
+                  {isPendingAudio && (
+                    <div className="flex items-center gap-3 rounded-lg border p-3 text-sm text-muted-foreground">
+                      <Spinner className="size-4 animate-spin" />
+                      <span>音声を生成中...</span>
+                    </div>
+                  )}
                   {allAudioFiles.map((af) => {
                     const isActive = af.id === activeAudioFileId
                     return (
@@ -514,7 +523,7 @@ export function ContentEditClient({ content, groupId }: Props) {
           scriptText={scriptText}
           ttsModel={ttsModel}
           onComplete={handleAudioComplete}
-          onCancel={() => setAudioModalOpen(false)}
+          onCancel={() => { setIsPendingAudio(false); setAudioModalOpen(false) }}
         />
       )}
     </div>

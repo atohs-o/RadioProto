@@ -21,7 +21,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const PlayMap = dynamic(() => import('@/components/client/play-map'), { ssr: false })
 
-const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '10')
+const TRIGGER_RADIUS_M = Number(process.env.NEXT_PUBLIC_TRIGGER_RADIUS_M ?? '30')
 const TERMINAL_RADIUS_M = Number(process.env.NEXT_PUBLIC_TERMINAL_RADIUS_M ?? '50')
 const AUDIO_TIMEOUT_SEC = Number(process.env.NEXT_PUBLIC_AUDIO_TIMEOUT_SEC ?? '120')
 const WAYPOINT_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_WAYPOINT_TIMEOUT_MIN ?? '5') * 60_000
@@ -302,7 +302,6 @@ function PlayPageContent() {
 
     isPlayingRef.current = true
     currentPlayingItemRef.current = item
-    setPlayingItemId(item.id)
 
     try {
       const cache = 'caches' in window ? await caches.open(AUDIO_CACHE) : null
@@ -331,6 +330,10 @@ function PlayPageContent() {
       currentObjectUrlRef.current = objectUrl
       const audio = new Audio(objectUrl)
       audioRef.current = audio
+
+      audio.addEventListener('playing', () => {
+        setPlayingItemId(item.id)
+      }, { once: true })
 
       audio.addEventListener(
         'ended',
@@ -453,6 +456,17 @@ function PlayPageContent() {
 
       const target = items[idx]
       const dist = haversineDistance(smoothed, { lat: target.lat, lng: target.lng })
+
+      // GPS 復帰後の飛び越しチェック: 次のPOIが現在のPOIより近ければ現在をスキップ
+      if (!hasEnteredRadiusRef.current && idx + 1 < items.length) {
+        const nextItem = items[idx + 1]
+        const distToNext = haversineDistance(smoothed, { lat: nextItem.lat, lng: nextItem.lng })
+        if (distToNext < dist) {
+          recordPlaybackEvent(target.id, 'skipped').catch(() => {})
+          advanceToNextSequenceRef.current()
+          return
+        }
+      }
 
       // 距離適応ログ（通常 10秒 / POI 100m以内なら 1秒 ごと）
       const now = Date.now()
@@ -768,9 +782,21 @@ function PlayPageContent() {
     } else {
       // OFF: 一時停止中の音声を再開、なければキューから開始
       if (audioRef.current && isPlayingRef.current) {
-        audioRef.current.currentTime = pausedTimeRef.current
-        audioRef.current.play().catch(console.error)
-      } else {
+        if (audioRef.current.ended) {
+          // 一時停止中に自然終了していたケース
+          isPlayingRef.current = false
+          currentPlayingItemRef.current = null
+          advanceToNextSequenceRef.current()
+        } else {
+          audioRef.current.currentTime = pausedTimeRef.current
+          audioRef.current.play().catch(() => {
+            isPlayingRef.current = false
+            currentPlayingItemRef.current = null
+            setPlayingItemId(null)
+            playNextFromQueueRef.current()
+          })
+        }
+      } else if (!isPlayingRef.current) {
         playNextFromQueueRef.current()
       }
     }
@@ -970,7 +996,7 @@ function PlayPageContent() {
       <div className="flex flex-1 overflow-hidden">
         {/* 左 2/3: ステータスバー + 地図 */}
         <div className="flex w-2/3 flex-col">
-          <div className="flex items-stretch gap-0 border-b border-border bg-card px-3 py-2">
+          <div className="flex flex-shrink-0 items-stretch gap-0 border-b border-border bg-card px-3 py-2">
             {/* 運行終了 */}
             <div className="flex items-center pr-3">
               <Button

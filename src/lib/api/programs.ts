@@ -4,6 +4,7 @@ import type { Program } from '@/lib/schemas'
 
 const RouteGeometryPointSchema = z.object({ lat: z.number(), lng: z.number() })
 const ShapePointSchema = z.object({ lat: z.number(), lng: z.number(), seq: z.number() })
+const StopSchema = z.object({ stopName: z.string(), lat: z.number(), lng: z.number() })
 
 function parseRouteGeometry(geometry: unknown): { lat: number; lng: number }[] {
   const result = z.array(RouteGeometryPointSchema).safeParse(geometry)
@@ -64,7 +65,7 @@ export async function getProgram(id: string): Promise<Program | null> {
   const { data, error } = await supabase
     .from('radio_programs')
     .select(`
-      id, name, is_active, group_id, updated_at,
+      id, name, is_active, group_id, updated_at, stops,
       radio_program_items (
         id, lat, lng, display_name, content_id, sequence, audio_file_id,
         contents ( title ),
@@ -105,6 +106,8 @@ export async function getProgram(id: string): Promise<Program | null> {
     points: z.array(ShapePointSchema).catch([]).parse(s.points),
   }))
 
+  const stops = z.array(StopSchema).catch([]).parse(data.stops)
+
   return {
     id: data.id,
     name: data.name,
@@ -112,6 +115,7 @@ export async function getProgram(id: string): Promise<Program | null> {
     groupId: data.group_id ?? undefined,
     routePoints,
     shapes,
+    stops,
     items,
     updatedAt: data.updated_at,
   }
